@@ -64,31 +64,6 @@ int main(int argc, char *argv[]) {
   // Don't change the timeing for totalSimulationTime.
   MPI_Barrier(MPI_COMM_WORLD);
   Timer totalSimulationTimer;
-  
-  // Test particle sending: mpirun -n 4 nbody-release-v1  -n 50000 -i 5 -in src/benchmark-files/random-50000-init.txt -s 500.0 -o logs/random-50000.txt
-  if(pid==0)
-  {
-    // Send particle as test
-    MPI_Request request_status;
-    for(int i = 0; i < 5; i++)
-    {
-      MPI_Isend(&particles[i], 1, particleType, 1, 0, MPI_COMM_WORLD, &request_status);
-      printf("Sending particle %d with mass %f, p=(%f,%f), v=(%f,%f)\n",
-        particles[i].id, particles[i].mass, particles[i].position.x, particles[i].position.y,
-        particles[i].velocity.x, particles[i].velocity.y);
-    }
-  }
-  if(pid==1)
-  {
-    MPI_Status comm_status;
-    Particle p;
-    for(int i = 0; i < 5; i++)
-    {
-      MPI_Recv(&p, 1, particleType, 0, 0, MPI_COMM_WORLD, &comm_status);
-      printf("Received particle %d with mass %f, p=(%f,%f), v=(%f,%f)\n",
-        p.id, p.mass, p.position.x, p.position.y, p.velocity.x, p.velocity.y);
-    }
-  }
 
   for (int i = 0; i < options.numIterations; i++) {
     // The following code is just a demonstration.
