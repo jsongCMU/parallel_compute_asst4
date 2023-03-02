@@ -4,6 +4,8 @@
 #include "common.h"
 #include <memory>
 
+const int QuadTreeLeafSize = 8;
+
 // NOTE: Do not remove or edit funcations and variables in this class definition
 class QuadTreeNode {
 public:
@@ -69,7 +71,52 @@ private:
                     Vec2 bmax) {
     // TODO: paste your sequential implementation in Assignment 3 here.
     // (or you may also rewrite a new version)
-    return nullptr;
+    std::unique_ptr<QuadTreeNode> curNode(new QuadTreeNode);
+    if (particles.size() <= QuadTreeLeafSize)
+    { 
+      curNode->isLeaf = true;
+      curNode->particles = particles;
+      return curNode;
+    }
+    else
+    {
+      curNode->isLeaf = false;
+      Vec2 pivot;
+      pivot.x = (bmax.x + bmin.x) / 2;
+      pivot.y = (bmax.y + bmin.y) / 2;
+
+      std::vector<Particle> childVectors[4];
+
+      for(const Particle &p : particles)
+      {
+        bool isLeft = p.position.x < pivot.x;
+        bool isUp = p.position.y < pivot.y;
+
+        if (isLeft && isUp)
+          childVectors[0].push_back(p);
+        else if (!isLeft && isUp)
+          childVectors[1].push_back(p);
+        else if (isLeft && !isUp)
+          childVectors[2].push_back(p);
+        else
+          childVectors[3].push_back(p);
+      }
+
+      // Create the subtrees for this node
+      curNode->children[0] = buildQuadTreeImpl(childVectors[0], bmin, pivot);
+
+      Vec2 topRightMin = {pivot.x, bmin.y};
+      Vec2 topRightMax = {bmax.x, pivot.y};
+      curNode->children[1] = buildQuadTreeImpl(childVectors[1], topRightMin, topRightMax);
+
+      Vec2 bottomLeftMin = {bmin.x, pivot.y};
+      Vec2 bottomLeftMax = {pivot.x, bmax.y};
+      curNode->children[2] = buildQuadTreeImpl(childVectors[2], bottomLeftMin, bottomLeftMax);
+
+      curNode->children[3] = buildQuadTreeImpl(childVectors[3], pivot, bmax);
+
+      return curNode;
+    }
   }
 
   static void getParticlesImpl(std::vector<Particle> &particles,

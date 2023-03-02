@@ -8,6 +8,19 @@ void simulateStep(const QuadTree &quadTree,
                   std::vector<Particle> &newParticles, StepParameters params) {
   // TODO: paste your sequential implementation in Assignment 3 here.
   // (or you may also rewrite a new version)
+  for (int i = 0; i < particles.size(); i++)
+  {
+    Particle curParticle = particles[i];
+
+    Vec2 force = Vec2(0.0f, 0.0f);
+    std::vector<Particle> nearbyParticles;
+    quadTree.getParticles(nearbyParticles, curParticle.position, params.cullRadius);
+
+    for (const Particle& nearbyP : nearbyParticles)
+    force += computeForce(curParticle, nearbyP, params.cullRadius);
+
+    newParticles[i] = updateParticle(curParticle, force, params.deltaTime);
+  }
 }
 
 int main(int argc, char *argv[]) {
