@@ -57,15 +57,15 @@ int main(int argc, char *argv[]) {
   MPI_Type_commit(&particleType);
 
   // Compute displacements and counts for allgatherv operation
-  int maxNumParticles = (particles.size()+nproc-1)/nproc;
+  int minNumParticles = particles.size()/nproc;
   int particleDisplacements[nproc];
   int particleCounts[nproc];
   for(int i=0; i<nproc; i++)
   {
-    particleDisplacements[i] = maxNumParticles*i;
-    particleCounts[i] = maxNumParticles;
+    particleDisplacements[i] = minNumParticles*i;
+    particleCounts[i] = minNumParticles;
   }
-  particleCounts[nproc-1] = (particleDisplacements[nproc-1]+particleCounts[nproc-1] > particles.size()) ? particles.size()-particleDisplacements[nproc-1] : particleCounts[nproc-1];
+  particleCounts[nproc-1] = particles.size()-particleDisplacements[nproc-1];
   // Set up new particles with range of interest
   newParticles.insert(newParticles.begin(), particles.begin()+particleDisplacements[pid], particles.begin()+particleDisplacements[pid]+particleCounts[pid]);
   
