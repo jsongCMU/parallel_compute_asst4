@@ -57,15 +57,20 @@ int main(int argc, char *argv[]) {
   MPI_Type_commit(&particleType);
 
   // Compute displacements and counts for allgatherv operation
-  int minNumParticles = particles.size()/nproc;
   int particleDisplacements[nproc];
   int particleCounts[nproc];
-  for(int i=0; i<nproc; i++)
   {
-    particleDisplacements[i] = minNumParticles*i;
-    particleCounts[i] = minNumParticles;
+    const int minNumParticles = particles.size()/nproc;
+    const int numParticlesRem = particles.size() % minNumParticles;
+    int particleToInc = numParticlesRem;
+    for(int i=0; i<nproc; i++)
+    {
+        int curThreadParticles = particleToInc ? (minNumParticles+1) : minNumParticles;
+        particleToInc = (particleToInc>0) ? particleToInc-1 : 0;
+        particleDisplacements[i] = (i<numParticlesRem) ? (minNumParticles*i+i) : (minNumParticles*i+numParticlesRem);
+        particleCounts[i] = curThreadParticles;
+    }
   }
-  particleCounts[nproc-1] = particles.size()-particleDisplacements[nproc-1];
   // Set up new particles with range of interest
   newParticles.insert(newParticles.begin(), particles.begin()+particleDisplacements[pid], particles.begin()+particleDisplacements[pid]+particleCounts[pid]);
   
