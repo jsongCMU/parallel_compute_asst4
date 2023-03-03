@@ -4,22 +4,19 @@
 #include "timing.h"
 
 void simulateStep(const QuadTree &quadTree,
-                  const std::vector<Particle> &particles,
-                  std::vector<Particle> &newParticles, StepParameters params) {
-  // TODO: paste your sequential implementation in Assignment 3 here.
-  // (or you may also rewrite a new version)
+                  std::vector<Particle> &particles, 
+                  StepParameters params) {
+  // Update particles for this thread
   for (int i = 0; i < particles.size(); i++)
   {
-    Particle curParticle = particles[i];
+    Particle &curParticle = particles[i];
 
     Vec2 force = Vec2(0.0f, 0.0f);
     std::vector<Particle> nearbyParticles;
     quadTree.getParticles(nearbyParticles, curParticle.position, params.cullRadius);
-
     for (const Particle& nearbyP : nearbyParticles)
-    force += computeForce(curParticle, nearbyP, params.cullRadius);
-
-    newParticles[i] = updateParticle(curParticle, force, params.deltaTime);
+      force += computeForce(curParticle, nearbyP, params.cullRadius);
+    curParticle = updateParticle(curParticle, force, params.deltaTime);
   }
 }
 
@@ -37,9 +34,7 @@ int main(int argc, char *argv[]) {
   StartupOptions options = parseOptions(argc, argv);
 
   std::vector<Particle> particles, newParticles;
-  if (pid == 0) {
-    loadFromFile(options.inputFile, particles);
-  }
+  loadFromFile(options.inputFile, particles);
 
   StepParameters stepParams = getBenchmarkStepParams(options.spaceSize);
 
@@ -61,16 +56,33 @@ int main(int argc, char *argv[]) {
   MPI_Type_create_struct(2, blockcounts, offsets, oldtypes, &particleType);
   MPI_Type_commit(&particleType);
 
+  // Compute displacements and counts for allgatherv operation
+  int maxNumParticles = (particles.size()+nproc-1)/nproc;
+  int particleDisplacements[nproc];
+  int particleCounts[nproc];
+  for(int i=0; i<nproc; i++)
+  {
+    particleDisplacements[i] = maxNumParticles*i;
+    particleCounts[i] = maxNumParticles;
+  }
+  particleCounts[nproc-1] = (particleDisplacements[nproc-1]+particleCounts[nproc-1] > particles.size()) ? particles.size()-particleDisplacements[nproc-1] : particleCounts[nproc-1];
+  // Set up new particles with range of interest
+  newParticles.insert(newParticles.begin(), particles.begin()+particleDisplacements[pid], particles.begin()+particleDisplacements[pid]+particleCounts[pid]);
+  
   // Don't change the timeing for totalSimulationTime.
   MPI_Barrier(MPI_COMM_WORLD);
   Timer totalSimulationTimer;
-
   for (int i = 0; i < options.numIterations; i++) {
-    // The following code is just a demonstration.
+    // Build quadtree of all particles
     QuadTree tree;
     QuadTree::buildQuadTree(particles, tree);
-    simulateStep(tree, particles, newParticles, stepParams);
-    particles.swap(newParticles);
+    // Update subset of particles
+    simulateStep(tree, newParticles, stepParams);
+    // Share and get updates
+    MPI_Allgatherv(
+      &newParticles[0], particleCounts[pid], particleType, // Send
+      &particles[0], particleCounts, particleDisplacements, particleType, // Recieve
+      MPI_COMM_WORLD);
   }
   MPI_Barrier(MPI_COMM_WORLD);
   double totalSimulationTime = totalSimulationTimer.elapsed();
