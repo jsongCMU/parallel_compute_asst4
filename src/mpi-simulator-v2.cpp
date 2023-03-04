@@ -17,8 +17,8 @@ std::vector<Particle> boxFilter(Vec2 topLeft, float dimX, float dimY, std::vecto
   std::vector<Particle> result;
   for(const Particle& particle : allParticles)
   {
-    bool isXValid = (particle.x >= topLeft.x) && (particle.x < botRight.x);
-    bool isYValid = (particle.y < topLeft.y) && (particle.x >= botRight.y);
+    bool isXValid = (particle.position.x >= topLeft.x) && (particle.position.x < botRight.x);
+    bool isYValid = (particle.position.y >= topLeft.y) && (particle.position.y < botRight.y);
     if(isXValid && isYValid)
       result.push_back(particle);
   }
@@ -60,6 +60,10 @@ int main(int argc, char *argv[]) {
   loadFromFile(options.inputFile, particles);
 
   float minX, minY, maxX, maxY;
+  minX = 1e30f;
+  minY = 1e30f;
+  maxX = -1e30f;
+  maxY = -1e30f;
 
   for (int i = 0; i < particles.size(); i++)
   {
@@ -68,8 +72,12 @@ int main(int argc, char *argv[]) {
     maxX = (particles[i].position.x > maxX) ? particles[i].position.x : maxX;
     maxY = (particles[i].position.y > maxY) ? particles[i].position.y : maxY;
   }
+  minX+=-0.1;
+  minY+=-0.1;
+  maxX+=0.1;
+  maxY+=0.1;
   
-  int sqrtNproc = int(sqrt(nproc))
+  int sqrtNproc = int(sqrt(nproc));
   float gridEdgeDimX = (maxX-minX) / sqrtNproc;
   float gridEdgeDimY = (maxY-minY) / sqrtNproc;
   int xCoord = pid % sqrtNproc;
@@ -77,7 +85,8 @@ int main(int argc, char *argv[]) {
   Vec2 threadBinTL = {
     minX+xCoord*gridEdgeDimX, 
     minY+yCoord*gridEdgeDimY};
-  particles = boxFilter(topLeft, gridEdgeDimX, gridEdgeDimY, particles);
+  particles = boxFilter(threadBinTL, gridEdgeDimX, gridEdgeDimY, particles);
+  printf("Thread %d has %ld particles; idx = (%d,%d); TL=(%f,%f)\n", pid, particles.size(), xCoord, yCoord, threadBinTL.x, threadBinTL.y);
 
 
   StepParameters stepParams = getBenchmarkStepParams(options.spaceSize);
