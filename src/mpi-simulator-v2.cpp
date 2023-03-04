@@ -25,6 +25,28 @@ std::vector<Particle> boxFilter(Vec2 topLeft, float dimX, float dimY, std::vecto
   return result;
 }
 
+// Given all particles, compute top left and bottom right points
+void getBounds(const std::vector<Particle> &particles, Vec2 &topLeft, Vec2 &botRight, float offset=0.01)
+{
+  Vec2 bmin(1e30f,1e30f);
+  Vec2 bmax(-1e30f,-1e30f);
+  for (int i = 0; i < particles.size(); i++)
+  {
+    bmin.x = (particles[i].position.x < bmin.x) ? particles[i].position.x : bmin.x;
+    bmin.y = (particles[i].position.y < bmin.y) ? particles[i].position.y : bmin.y;
+    bmax.x = (particles[i].position.x > bmax.x) ? particles[i].position.x : bmax.x;
+    bmax.y = (particles[i].position.y > bmax.y) ? particles[i].position.y : bmax.y;
+  }
+  // Need padding for particles right on bounding box
+  bmin.x+=-offset;
+  bmin.y+=-offset;
+  bmax.x+=offset;
+  bmax.y+=offset;
+  // Update
+  topLeft = bmin;
+  botRight = bmax;
+}
+
 int main(int argc, char *argv[]) {
   int pid;
   int nproc;
@@ -59,35 +81,22 @@ int main(int argc, char *argv[]) {
   std::vector<Particle> particles, newParticles;
   loadFromFile(options.inputFile, particles);
 
-  float minX, minY, maxX, maxY;
-  minX = 1e30f;
-  minY = 1e30f;
-  maxX = -1e30f;
-  maxY = -1e30f;
-
-  for (int i = 0; i < particles.size(); i++)
-  {
-    minX = (particles[i].position.x < minX) ? particles[i].position.x : minX;
-    minY = (particles[i].position.y < minY) ? particles[i].position.y : minY;
-    maxX = (particles[i].position.x > maxX) ? particles[i].position.x : maxX;
-    maxY = (particles[i].position.y > maxY) ? particles[i].position.y : maxY;
-  }
-  minX+=-0.1;
-  minY+=-0.1;
-  maxX+=0.1;
-  maxY+=0.1;
+  // Get bounds based on particles
+  Vec2 bmin, bmax;
+  getBounds(particles, bmin, bmax);
   
+  // Get bin dimensions for this thread
   int sqrtNproc = int(sqrt(nproc));
-  float gridEdgeDimX = (maxX-minX) / sqrtNproc;
-  float gridEdgeDimY = (maxY-minY) / sqrtNproc;
+  float gridEdgeDimX = (bmax.x-bmin.x) / sqrtNproc;
+  float gridEdgeDimY = (bmax.y-bmin.y) / sqrtNproc;
   int xCoord = pid % sqrtNproc;
   int yCoord = pid / sqrtNproc;
   Vec2 threadBinTL = {
-    minX+xCoord*gridEdgeDimX, 
-    minY+yCoord*gridEdgeDimY};
-  particles = boxFilter(threadBinTL, gridEdgeDimX, gridEdgeDimY, particles);
-  printf("Thread %d has %ld particles; idx = (%d,%d); TL=(%f,%f)\n", pid, particles.size(), xCoord, yCoord, threadBinTL.x, threadBinTL.y);
+    bmin.x+xCoord*gridEdgeDimX,
+    bmin.y+yCoord*gridEdgeDimY};
 
+  // Get particles for this thread
+  particles = boxFilter(threadBinTL, gridEdgeDimX, gridEdgeDimY, particles);
 
   StepParameters stepParams = getBenchmarkStepParams(options.spaceSize);
 
