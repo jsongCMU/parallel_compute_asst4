@@ -3,6 +3,22 @@
 #include "quad-tree.h"
 #include "timing.h"
 
+struct GridInfo{
+    Vec2 gridMin;
+    Vec2 gridMax;
+    float binDimX;
+    float binDimY;
+    int numCols;
+    int numRows;
+};
+
+struct BinInfo{
+    int col;
+    int row;
+    Vec2 binMin;
+    Vec2 binMax;
+};
+
 void simulateStep(const QuadTree &quadTree,
                   const std::vector<Particle> &particles,
                   std::vector<Particle> &newParticles, StepParameters params) {
@@ -11,40 +27,67 @@ void simulateStep(const QuadTree &quadTree,
 }
 
 // Given all particles, return only particles that matter to current bin
-std::vector<Particle> boxFilter(Vec2 topLeft, float dimX, float dimY, std::vector<Particle> allParticles)
+std::vector<Particle> binFilter(const BinInfo &binInfo, const std::vector<Particle> &allParticles)
 {
-  Vec2 botRight = {topLeft.x+dimX, topLeft.y+dimY};
   std::vector<Particle> result;
   for(const Particle& particle : allParticles)
   {
-    bool isXValid = (particle.position.x >= topLeft.x) && (particle.position.x < botRight.x);
-    bool isYValid = (particle.position.y >= topLeft.y) && (particle.position.y < botRight.y);
+    bool isXValid = (particle.position.x >= binInfo.binMin.x) && (particle.position.x < binInfo.binMax.x);
+    bool isYValid = (particle.position.y >= binInfo.binMin.y) && (particle.position.y < binInfo.binMax.y);
     if(isXValid && isYValid)
       result.push_back(particle);
   }
   return result;
 }
 
-// Given all particles, compute top left and bottom right points
-void getBounds(const std::vector<Particle> &particles, Vec2 &topLeft, Vec2 &botRight, float offset=0.01)
+// Given all particles, compute minimum and maximum bounds
+void getBounds(const std::vector<Particle> &particles, Vec2 &bmin, Vec2 &bmax, float offset=0.01)
 {
-  Vec2 bmin(1e30f,1e30f);
-  Vec2 bmax(-1e30f,-1e30f);
+  Vec2 bmin_temp(1e30f,1e30f);
+  Vec2 bmax_temp(-1e30f,-1e30f);
   for (int i = 0; i < particles.size(); i++)
   {
-    bmin.x = (particles[i].position.x < bmin.x) ? particles[i].position.x : bmin.x;
-    bmin.y = (particles[i].position.y < bmin.y) ? particles[i].position.y : bmin.y;
-    bmax.x = (particles[i].position.x > bmax.x) ? particles[i].position.x : bmax.x;
-    bmax.y = (particles[i].position.y > bmax.y) ? particles[i].position.y : bmax.y;
+    bmin_temp.x = (particles[i].position.x < bmin_temp.x) ? particles[i].position.x : bmin_temp.x;
+    bmin_temp.y = (particles[i].position.y < bmin_temp.y) ? particles[i].position.y : bmin_temp.y;
+    bmax_temp.x = (particles[i].position.x > bmax_temp.x) ? particles[i].position.x : bmax_temp.x;
+    bmax_temp.y = (particles[i].position.y > bmax_temp.y) ? particles[i].position.y : bmax_temp.y;
   }
   // Need padding for particles right on bounding box
-  bmin.x+=-offset;
-  bmin.y+=-offset;
-  bmax.x+=offset;
-  bmax.y+=offset;
+  bmin_temp.x+=-offset;
+  bmin_temp.y+=-offset;
+  bmax_temp.x+=offset;
+  bmax_temp.y+=offset;
   // Update
-  topLeft = bmin;
-  botRight = bmax;
+  bmin = bmin_temp;
+  bmax = bmax_temp;
+}
+
+// Update grid info
+void updateGridInfo(GridInfo &gridInfo, const std::vector<Particle> &particles, int nproc)
+{
+    // Update bounds
+    getBounds(particles, gridInfo.gridMin, gridInfo.gridMax);
+    // Update number of columns and rows
+    int sqrtNproc = int(sqrt(nproc));
+    gridInfo.numRows = sqrtNproc;
+    gridInfo.numCols = sqrtNproc;
+    // Update per bin x and y dims
+    gridInfo.binDimX = (gridInfo.gridMax.x-gridInfo.gridMin.x) / sqrtNproc;
+    gridInfo.binDimY = (gridInfo.gridMax.y-gridInfo.gridMin.y) / sqrtNproc;
+}
+
+// Update bin info
+void updateBinInfo(BinInfo &binInfo, const GridInfo &gridInfo, const int pid)
+{
+    binInfo.col = pid % gridInfo.numCols;
+    binInfo.row = pid / gridInfo.numCols;
+    binInfo.binMin = {
+        gridInfo.gridMin.x+binInfo.col*gridInfo.binDimX,
+        gridInfo.gridMin.y+binInfo.row*gridInfo.binDimY};
+    binInfo.binMax = {
+        binInfo.binMin.x+gridInfo.binDimX,
+        binInfo.binMin.y+gridInfo.binDimY
+    };
 }
 
 int main(int argc, char *argv[]) {
@@ -81,22 +124,16 @@ int main(int argc, char *argv[]) {
   std::vector<Particle> particles, newParticles;
   loadFromFile(options.inputFile, particles);
 
-  // Get bounds based on particles
-  Vec2 bmin, bmax;
-  getBounds(particles, bmin, bmax);
-  
-  // Get bin dimensions for this thread
-  int sqrtNproc = int(sqrt(nproc));
-  float gridEdgeDimX = (bmax.x-bmin.x) / sqrtNproc;
-  float gridEdgeDimY = (bmax.y-bmin.y) / sqrtNproc;
-  int xCoord = pid % sqrtNproc;
-  int yCoord = pid / sqrtNproc;
-  Vec2 threadBinTL = {
-    bmin.x+xCoord*gridEdgeDimX,
-    bmin.y+yCoord*gridEdgeDimY};
+  // Compute overall grid info
+  GridInfo gridInfo;
+  updateGridInfo(gridInfo, particles, nproc);
+  // Compute bin specific info
+  BinInfo binInfo;
+  updateBinInfo(binInfo, gridInfo, pid);
 
   // Get particles for this thread
-  particles = boxFilter(threadBinTL, gridEdgeDimX, gridEdgeDimY, particles);
+  particles = binFilter(binInfo, particles);
+  printf("PID = %d has %ld particles\n", pid, particles.size());
 
   StepParameters stepParams = getBenchmarkStepParams(options.spaceSize);
 
