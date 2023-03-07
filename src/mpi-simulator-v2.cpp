@@ -90,6 +90,11 @@ void updateBinInfo(BinInfo &binInfo, const GridInfo &gridInfo, const int pid)
     };
 }
 
+std::vector<int> getRelevantNieghbors(const GridInfo &gridInfo, const BinInfo &binInfo, const float radius)
+{
+    // TOOD: Everything
+}
+
 int main(int argc, char *argv[]) {
   int pid;
   int nproc;
@@ -133,9 +138,11 @@ int main(int argc, char *argv[]) {
 
   // Get particles for this thread
   particles = binFilter(binInfo, particles);
-  printf("PID = %d has %ld particles\n", pid, particles.size());
 
   StepParameters stepParams = getBenchmarkStepParams(options.spaceSize);
+
+  // Get relevant, neighboring bins
+  std::vector<int> neighborPIDs = getRelevantNieghbors(gridInfo, binInfo, stepParams.cullRadius);
 
   // Don't change the timeing for totalSimulationTime.
   MPI_Barrier(MPI_COMM_WORLD);
