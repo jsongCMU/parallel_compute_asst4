@@ -2,6 +2,7 @@
 #include "mpi.h"
 #include "quad-tree.h"
 #include "timing.h"
+#include <string>
 
 struct GridInfo{
     Vec2 gridMin;
@@ -92,7 +93,32 @@ void updateBinInfo(BinInfo &binInfo, const GridInfo &gridInfo, const int pid)
 
 std::vector<int> getRelevantNieghbors(const GridInfo &gridInfo, const BinInfo &binInfo, const float radius)
 {
-    // TOOD: Everything
+    // Expand boundaries by radius
+    Vec2 bminExpand = {binInfo.binMin.x-radius, binInfo.binMin.y-radius};
+    Vec2 bmaxExpand = {binInfo.binMax.x+radius, binInfo.binMax.y+radius};
+    // Compute range of rows and columns that touch boundary
+    int colStart = (bminExpand.x-gridInfo.gridMin.x)/gridInfo.binDimX;
+    int colEnd = (bmaxExpand.x-gridInfo.gridMin.x)/gridInfo.binDimX;
+    int rowStart = (bminExpand.y-gridInfo.gridMin.y)/gridInfo.binDimY;
+    int rowEnd = (bmaxExpand.y-gridInfo.gridMin.y)/gridInfo.binDimY;
+    // Cap
+    colStart = (colStart < 0) ? 0 : colStart;
+    colEnd = (colEnd > gridInfo.numCols-1) ? gridInfo.numCols-1 : colEnd;
+    rowStart = (rowStart < 0) ? 0 : rowStart;
+    rowEnd = (rowEnd > gridInfo.numRows-1) ? gridInfo.numRows-1 : rowEnd;
+    // Accumulate
+    std::vector<int> relevant_pids;
+    for(int row = rowStart; row < rowEnd+1; row++)
+    {
+        for(int col = colStart; col < colEnd+1; col++)
+        {
+            if(col == binInfo.col && row == binInfo.row)
+                continue;
+            relevant_pids.push_back(row*gridInfo.numCols+col);
+        }
+    }
+    return relevant_pids;
+
 }
 
 int main(int argc, char *argv[]) {
@@ -142,7 +168,7 @@ int main(int argc, char *argv[]) {
   StepParameters stepParams = getBenchmarkStepParams(options.spaceSize);
 
   // Get relevant, neighboring bins
-  std::vector<int> neighborPIDs = getRelevantNieghbors(gridInfo, binInfo, stepParams.cullRadius);
+  std::vector<int> relevantPIDs = getRelevantNieghbors(gridInfo, binInfo, stepParams.cullRadius);
 
   // Don't change the timeing for totalSimulationTime.
   MPI_Barrier(MPI_COMM_WORLD);
