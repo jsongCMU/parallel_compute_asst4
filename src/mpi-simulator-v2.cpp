@@ -155,37 +155,32 @@ int main(int argc, char *argv[]) {
   std::vector<Particle> particles, newParticles;
   loadFromFile(options.inputFile, particles);
 
+  
+  nproc = 16;
+
   // Compute overall grid info
   GridInfo gridInfo;
   updateGridInfo(gridInfo, particles, nproc);
-  // Compute bin specific info
-  BinInfo binInfo;
-  updateBinInfo(binInfo, gridInfo, pid);
-
-  // Get particles for this thread
-  particles = binFilter(binInfo, particles);
 
   StepParameters stepParams = getBenchmarkStepParams(options.spaceSize);
 
-  // Get relevant, neighboring bins
-  std::vector<int> relevantPIDs = getRelevantNieghbors(gridInfo, binInfo, stepParams.cullRadius);
+  for(pid = 0; pid < nproc; pid++)
+  {
+    // Compute bin specific info
+    BinInfo binInfo;
+    updateBinInfo(binInfo, gridInfo, pid);
 
-  // Don't change the timeing for totalSimulationTime.
-  MPI_Barrier(MPI_COMM_WORLD);
-  Timer totalSimulationTimer;
-  for (int i = 0; i < options.numIterations; i++) {
-    // The following code is just a demonstration.
-    QuadTree tree;
-    QuadTree::buildQuadTree(particles, tree);
-    simulateStep(tree, particles, newParticles, stepParams);
-    particles.swap(newParticles);
-  }
-  MPI_Barrier(MPI_COMM_WORLD);
-  double totalSimulationTime = totalSimulationTimer.elapsed();
+    // Get particles for this thread
+    particles = binFilter(binInfo, particles);
 
-  if (pid == 0) {
-    printf("total simulation time: %.6fs\n", totalSimulationTime);
-    saveToFile(options.outputFile, particles);
+    // Get relevant, neighboring bins
+    std::vector<int> relevantPIDs = getRelevantNieghbors(gridInfo, binInfo, stepParams.cullRadius);
+    std::string toPrint;
+    for(int i=0; i<relevantPIDs.size(); i++)
+    {
+        toPrint = toPrint + std::to_string(relevantPIDs[i]) + ", ";
+    }
+    printf("PID=%d: %s\n", pid, toPrint.c_str());
   }
 
   MPI_Finalize();
