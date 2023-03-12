@@ -132,42 +132,108 @@ int main(int argc, char *argv[]) {
   // Get total number of processes specificed at start of run
   MPI_Comm_size(MPI_COMM_WORLD, &nproc);
 
+  // Create struct for Particle (https://hpc-tutorials.llnl.gov/mpi/derived_data_types/struct_examples/)
+  // Particle is 1 int (id) and 5 floats (mass, position, velocity)
+  MPI_Aint offsets[2], lowerbound, extent;
+  MPI_Datatype particleType, oldtypes[2];
+  int blockcounts[2];
+  // 1 Int
+  offsets[0] = 0;
+  oldtypes[0] = MPI_INT;
+  blockcounts[0] = 1;
+  // 5 floats
+  MPI_Type_get_extent(MPI_INT, &lowerbound, &extent);
+  offsets[1] = 1 * extent;
+  oldtypes[1] = MPI_FLOAT;
+  blockcounts[1] = 5;
+  // Bind
+  MPI_Type_create_struct(2, blockcounts, offsets, oldtypes, &particleType);
+  MPI_Type_commit(&particleType);
+
+  // Starting configuration
   StartupOptions options = parseOptions(argc, argv);
-
-  std::vector<Particle> particles, newParticles;
-  loadFromFile(options.inputFile, particles);
-
-  // Compute overall grid info
-  GridInfo gridInfo;
-  updateGridInfo(gridInfo, particles, nproc);
-  // Compute bin specific info
-  BinInfo binInfo;
-  updateBinInfo(binInfo, gridInfo, pid);
-
-  // Get particles for this thread
-  particles = binFilter(binInfo, particles);
-
+  std::vector<Particle> allParticles;
+  loadFromFile(options.inputFile, allParticles);
   StepParameters stepParams = getBenchmarkStepParams(options.spaceSize);
 
-  // Get relevant, neighboring bins
-  std::vector<int> relevantPIDs = getRelevantNieghbors(gridInfo, binInfo, stepParams.cullRadius);
+  // Setup variables
+  std::vector<Particle> myParticles, relevParticles;
+  GridInfo gridInfo;
+  BinInfo binInfo;
+  std::vector<int> relevantPIDs;
+  Particle *recv_buffer;
+  int recv_buffer_size;
+
+  // Adjust buffer
+  relevParticles.resize(allParticles.size());
 
   // Don't change the timeing for totalSimulationTime.
   MPI_Barrier(MPI_COMM_WORLD);
   Timer totalSimulationTimer;
-  for (int i = 0; i < options.numIterations; i++) {
-    // The following code is just a demonstration.
-    QuadTree tree;
-    QuadTree::buildQuadTree(particles, tree);
-    simulateStep(tree, particles, newParticles, stepParams);
-    particles.swap(newParticles);
+  for (int timestep = 0; timestep < options.numIterations; timestep++) {
+    // Update grid and bin using allParticles
+    updateGridInfo(gridInfo, allParticles, nproc);
+    updateBinInfo(binInfo, gridInfo, pid);
+    // Compute myParticles
+    myParticles = binFilter(binInfo, allParticles);
+    // Get PIDs to send to / receive from
+    relevantPIDs = getRelevantNieghbors(gridInfo, binInfo, stepParams.cullRadius);
+    // Send info
+    int tag_id = 0; // TODO: change later?
+    MPI_Request tx_status; // TODO: keep or nah?
+    for(int i = 0; i < relevantPIDs.size(); i++)
+    {
+        MPI_Isend(&myParticles[0], myParticles.size(), particleType, relevantPIDs[i], tag_id, MPI_COMM_WORLD, &tx_status);
+    }
+    // Receive info
+    MPI_Status comm_status;
+    recv_buffer = &relevParticles[0];
+    recv_buffer_size = relevParticles.size();
+    std::string toPrint; // TODO: remove
+    for(int i = 0; i < relevantPIDs.size(); i++)
+    {
+      int numel;
+      MPI_Recv(recv_buffer, recv_buffer_size, particleType, relevantPIDs[i], tag_id, MPI_COMM_WORLD, &comm_status);
+      MPI_Get_count(&comm_status, particleType, &numel);
+      // Update recv buffer
+      recv_buffer += numel;
+      recv_buffer_size -= numel;
+      toPrint += std::to_string(numel) + ", ";
+    }
+    printf("%d:%d | Mine: %ld | Relev particles: %s\n", timestep, pid, myParticles.size(), toPrint.c_str());
+    // Simulation
+    // TODO: quadtree
+    // TODO: update myParticles
+    // Update allParticles
+    for(int i=0; i<nproc; i++)
+    {
+      if(i==pid)
+        continue;
+      MPI_Isend(&myParticles[0], myParticles.size(), particleType, i, tag_id, MPI_COMM_WORLD, &tx_status);
+    }
+    recv_buffer = &allParticles[0];
+    recv_buffer_size = allParticles.size();
+    for(int i=0; i<nproc; i++)
+    {
+      if(i==pid)
+        continue;
+      int numel;
+      MPI_Recv(recv_buffer, recv_buffer_size, particleType, i, tag_id, MPI_COMM_WORLD, &comm_status);
+      MPI_Get_count(&comm_status, particleType, &numel);
+      recv_buffer += numel;
+      recv_buffer_size -= numel;
+    }
+    memcpy(recv_buffer, &myParticles[0], myParticles.size()*sizeof(Particle));
+    // Synch
+    MPI_Barrier(MPI_COMM_WORLD);
+    
   }
   MPI_Barrier(MPI_COMM_WORLD);
   double totalSimulationTime = totalSimulationTimer.elapsed();
 
   if (pid == 0) {
     printf("total simulation time: %.6fs\n", totalSimulationTime);
-    saveToFile(options.outputFile, particles);
+    saveToFile(options.outputFile, allParticles);
   }
 
   MPI_Finalize();
