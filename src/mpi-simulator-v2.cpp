@@ -21,10 +21,20 @@ struct BinInfo{
 };
 
 void simulateStep(const QuadTree &quadTree,
-                  const std::vector<Particle> &particles,
-                  std::vector<Particle> &newParticles, StepParameters params) {
-  // TODO: paste your sequential implementation in Assignment 3 here.
-  // (or you may also rewrite a new version)
+                  std::vector<Particle> &particles, 
+                  StepParameters params) {
+  // Update particles for this thread
+  for (int i = 0; i < particles.size(); i++)
+  {
+    Particle &curParticle = particles[i];
+
+    Vec2 force = Vec2(0.0f, 0.0f);
+    std::vector<Particle> nearbyParticles;
+    quadTree.getParticles(nearbyParticles, curParticle.position, params.cullRadius);
+    for (const Particle& nearbyP : nearbyParticles)
+      force += computeForce(curParticle, nearbyP, params.cullRadius);
+    curParticle = updateParticle(curParticle, force, params.deltaTime);
+  }
 }
 
 // Given all particles, return only particles that matter to current bin
@@ -162,10 +172,7 @@ int main(int argc, char *argv[]) {
   BinInfo binInfo;
   std::vector<int> relevantPIDs;
   Particle *recv_buffer;
-  int recv_buffer_size;
-
-  // Adjust buffer
-  relevParticles.resize(allParticles.size());
+  int recv_buffer_rem;
 
   // Don't change the timeing for totalSimulationTime.
   MPI_Barrier(MPI_COMM_WORLD);
@@ -176,6 +183,7 @@ int main(int argc, char *argv[]) {
     updateBinInfo(binInfo, gridInfo, pid);
     // Compute myParticles
     myParticles = binFilter(binInfo, allParticles);
+    
     // Get PIDs to send to / receive from
     relevantPIDs = getRelevantNieghbors(gridInfo, binInfo, stepParams.cullRadius);
     // Send info
@@ -187,23 +195,34 @@ int main(int argc, char *argv[]) {
     }
     // Receive info
     MPI_Status comm_status;
+    relevParticles.resize(allParticles.size());
     recv_buffer = &relevParticles[0];
-    recv_buffer_size = relevParticles.size();
+    recv_buffer_rem = relevParticles.size();
     std::string toPrint; // TODO: remove
     for(int i = 0; i < relevantPIDs.size(); i++)
     {
       int numel;
-      MPI_Recv(recv_buffer, recv_buffer_size, particleType, relevantPIDs[i], tag_id, MPI_COMM_WORLD, &comm_status);
+      MPI_Recv(recv_buffer, recv_buffer_rem, particleType, relevantPIDs[i], tag_id, MPI_COMM_WORLD, &comm_status);
       MPI_Get_count(&comm_status, particleType, &numel);
       // Update recv buffer
       recv_buffer += numel;
-      recv_buffer_size -= numel;
+      recv_buffer_rem -= numel;
       toPrint += std::to_string(numel) + ", ";
     }
-    printf("%d:%d | Mine: %ld | Relev particles: %s\n", timestep, pid, myParticles.size(), toPrint.c_str());
+    // Add own particles
+    memcpy(recv_buffer, &myParticles[0], myParticles.size()*sizeof(Particle));
+    recv_buffer_rem -= myParticles.size();
+    // Shrink
+    relevParticles.resize(relevParticles.size()-recv_buffer_rem);
+    // printf("%d:%d | Mine: %ld | Relev particles: %s (%ld)\n", timestep, pid, myParticles.size(), toPrint.c_str(), relevParticles.size());
+    
     // Simulation
-    // TODO: quadtree
-    // TODO: update myParticles
+    // Build quadtree of all particles
+    QuadTree tree;
+    QuadTree::buildQuadTree(relevParticles, tree);
+    // Update myParticles
+    simulateStep(tree, myParticles, stepParams);
+    
     // Update allParticles
     for(int i=0; i<nproc; i++)
     {
@@ -212,16 +231,16 @@ int main(int argc, char *argv[]) {
       MPI_Isend(&myParticles[0], myParticles.size(), particleType, i, tag_id, MPI_COMM_WORLD, &tx_status);
     }
     recv_buffer = &allParticles[0];
-    recv_buffer_size = allParticles.size();
+    recv_buffer_rem = allParticles.size();
     for(int i=0; i<nproc; i++)
     {
       if(i==pid)
         continue;
       int numel;
-      MPI_Recv(recv_buffer, recv_buffer_size, particleType, i, tag_id, MPI_COMM_WORLD, &comm_status);
+      MPI_Recv(recv_buffer, recv_buffer_rem, particleType, i, tag_id, MPI_COMM_WORLD, &comm_status);
       MPI_Get_count(&comm_status, particleType, &numel);
       recv_buffer += numel;
-      recv_buffer_size -= numel;
+      recv_buffer_rem -= numel;
     }
     memcpy(recv_buffer, &myParticles[0], myParticles.size()*sizeof(Particle));
     // Synch
