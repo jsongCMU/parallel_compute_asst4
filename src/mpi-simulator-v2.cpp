@@ -20,13 +20,14 @@ struct BinInfo{
     Vec2 binMax;
 };
 
-void simulateStep(const QuadTree &quadTree,
-                  std::vector<Particle> &particles, 
+std::vector<Particle> simulateStep(const QuadTree &quadTree,
+                  const std::vector<Particle> &particles,
                   StepParameters params) {
   // Update particles for this thread
+  std::vector<Particle> result;
   for (int i = 0; i < particles.size(); i++)
   {
-    Particle &curParticle = particles[i];
+    Particle curParticle = particles[i];
 
     Vec2 force = Vec2(0.0f, 0.0f);
     std::vector<Particle> nearbyParticles;
@@ -34,7 +35,9 @@ void simulateStep(const QuadTree &quadTree,
     for (const Particle& nearbyP : nearbyParticles)
       force += computeForce(curParticle, nearbyP, params.cullRadius);
     curParticle = updateParticle(curParticle, force, params.deltaTime);
+    result.push_back(curParticle);
   }
+  return result;
 }
 
 // Given all particles, return only particles that matter to current bin
@@ -221,7 +224,7 @@ int main(int argc, char *argv[]) {
     QuadTree tree;
     QuadTree::buildQuadTree(relevParticles, tree);
     // Update myParticles
-    simulateStep(tree, myParticles, stepParams);
+    myParticles = simulateStep(tree, myParticles, stepParams);
     
     // Update allParticles
     for(int i=0; i<nproc; i++)
