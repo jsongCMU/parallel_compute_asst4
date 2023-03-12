@@ -252,7 +252,23 @@ int main(int argc, char *argv[]) {
 
   if (pid == 0) {
     printf("total simulation time: %.6fs\n", totalSimulationTime);
-    saveToFile(options.outputFile, allParticles);
+    // TODO: allParticles is jumbled; check if sorting to pass test ok?
+    // TODO: fix the worst freaking sorting code ever written >:(
+    std::vector<Particle> logParticles;
+    int target_idx=0;
+    for(int i=0; i<allParticles.size(); i++)
+    {
+      for(int j=0; j<allParticles.size(); j++)
+      {
+        if(allParticles[j].id == target_idx)
+        {
+          logParticles.push_back(allParticles[j]);
+          break;
+        }
+      }
+      target_idx++;
+    }
+    saveToFile(options.outputFile, logParticles);
   }
 
   MPI_Finalize();
