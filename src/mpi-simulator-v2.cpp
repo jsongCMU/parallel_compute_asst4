@@ -106,7 +106,7 @@ void updateBinInfo(BinInfo &binInfo, const GridInfo &gridInfo, const int pid)
     };
 }
 
-std::vector<int> getRelevantNieghbors(const GridInfo &gridInfo, const BinInfo &binInfo, const float radius)
+std::vector<int> getRelevantNeighbors(const GridInfo &gridInfo, const BinInfo &binInfo, const float radius)
 {
     // Expand boundaries by radius
     Vec2 bminExpand = {binInfo.binMin.x-radius, binInfo.binMin.y-radius};
@@ -182,6 +182,7 @@ int main(int argc, char *argv[]) {
   // Don't change the timeing for totalSimulationTime.
   MPI_Barrier(MPI_COMM_WORLD);
   Timer totalSimulationTimer;
+
   for (int timestep = 0; timestep < options.numIterations; timestep++) {
     // Update grid and bin using allParticles
     updateGridInfo(gridInfo, allParticles, nproc);
@@ -190,7 +191,8 @@ int main(int argc, char *argv[]) {
     myParticles = binFilter(binInfo, allParticles);
     
     // Get PIDs to send to / receive from
-    relevantPIDs = getRelevantNieghbors(gridInfo, binInfo, stepParams.cullRadius);
+    relevantPIDs = getRelevantNeighbors(gridInfo, binInfo, stepParams.cullRadius);
+
     // Send info
     int tag_id = 0; // TODO: change later?
     MPI_Request tx_status; // TODO: keep or nah?
@@ -203,7 +205,10 @@ int main(int argc, char *argv[]) {
     relevParticles.resize(allParticles.size());
     recv_buffer = &relevParticles[0];
     recv_buffer_rem = relevParticles.size();
-    std::string toPrint; // TODO: remove
+
+    // Sync
+    MPI_Barrier(MPI_COMM_WORLD);
+    
     for(int i = 0; i < relevantPIDs.size(); i++)
     {
       int numel;
@@ -212,20 +217,20 @@ int main(int argc, char *argv[]) {
       // Update recv buffer
       recv_buffer += numel;
       recv_buffer_rem -= numel;
-      toPrint += std::to_string(numel) + ", ";
     }
     // Add own particles
     memcpy(recv_buffer, &myParticles[0], myParticles.size()*sizeof(Particle));
     recv_buffer_rem -= myParticles.size();
-    // Shrink
     relevParticles.resize(relevParticles.size()-recv_buffer_rem);
-    // printf("%d:%d | Mine: %ld | Relev particles: %s (%ld)\n", timestep, pid, myParticles.size(), toPrint.c_str(), relevParticles.size());
-    
+
+    // Sync
+    MPI_Barrier(MPI_COMM_WORLD);
+
     // Build quadtree and simulate
     QuadTree tree;
     QuadTree::buildQuadTree(relevParticles, tree);
     simulateStep(tree, myParticles, stepParams);
-    
+
     // Update allParticles
     for(int i=0; i<nproc; i++)
     {
@@ -233,12 +238,17 @@ int main(int argc, char *argv[]) {
         continue;
       MPI_Isend(&myParticles[0], myParticles.size(), particleType, i, tag_id, MPI_COMM_WORLD, &tx_status);
     }
+
+    // Sync
+    MPI_Barrier(MPI_COMM_WORLD);
+    
     recv_buffer = &allParticles[0];
     recv_buffer_rem = allParticles.size();
-    for(int i=0; i<nproc; i++)
+    for(int i=0; i < nproc; i++)
     {
       if(i==pid)
         continue;
+      
       int numel;
       MPI_Recv(recv_buffer, recv_buffer_rem, particleType, i, tag_id, MPI_COMM_WORLD, &comm_status);
       MPI_Get_count(&comm_status, particleType, &numel);
@@ -249,8 +259,8 @@ int main(int argc, char *argv[]) {
 
     // Sync
     MPI_Barrier(MPI_COMM_WORLD);
-    
   }
+
   MPI_Barrier(MPI_COMM_WORLD);
   double totalSimulationTime = totalSimulationTimer.elapsed();
 
