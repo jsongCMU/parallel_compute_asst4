@@ -124,7 +124,7 @@ private:
                                Vec2 position, float radius) {
     if (node->isLeaf) {
       for (auto &p : node->particles)
-        if ((position - p.position).length() < radius)
+        if ((position - p.position).length2() < pow(radius,2))
           particles.push_back(p);
       return;
     }
