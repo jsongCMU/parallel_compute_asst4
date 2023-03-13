@@ -4,7 +4,7 @@
 #include "common.h"
 #include <memory>
 
-const int QuadTreeLeafSize = 8;
+const int QuadTreeLeafSize = 128;
 
 // NOTE: Do not remove or edit funcations and variables in this class definition
 class QuadTreeNode {
