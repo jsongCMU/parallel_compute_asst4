@@ -3,6 +3,7 @@
 #include "quad-tree.h"
 #include "timing.h"
 #include <string>
+#include <bits/stdc++.h>
 
 struct GridInfo{
     Vec2 gridMin;
@@ -20,14 +21,15 @@ struct BinInfo{
     Vec2 binMax;
 };
 
-std::vector<Particle> simulateStep(const QuadTree &quadTree,
-                  const std::vector<Particle> &particles,
-                  StepParameters params) {
+void simulateStep(const QuadTree &quadTree,
+                  std::vector<Particle> &particles,
+                  const StepParameters& params) {
   // Update particles for this thread
-  std::vector<Particle> result;
+  std::vector<Particle> result = particles;
+
   for (int i = 0; i < particles.size(); i++)
   {
-    Particle curParticle = particles[i];
+    Particle& curParticle = result[i];
 
     Vec2 force = Vec2(0.0f, 0.0f);
     std::vector<Particle> nearbyParticles;
@@ -35,9 +37,9 @@ std::vector<Particle> simulateStep(const QuadTree &quadTree,
     for (const Particle& nearbyP : nearbyParticles)
       force += computeForce(curParticle, nearbyP, params.cullRadius);
     curParticle = updateParticle(curParticle, force, params.deltaTime);
-    result.push_back(curParticle);
   }
-  return result;
+
+  particles.swap(result);
 }
 
 // Given all particles, return only particles that matter to current bin
@@ -219,12 +221,10 @@ int main(int argc, char *argv[]) {
     relevParticles.resize(relevParticles.size()-recv_buffer_rem);
     // printf("%d:%d | Mine: %ld | Relev particles: %s (%ld)\n", timestep, pid, myParticles.size(), toPrint.c_str(), relevParticles.size());
     
-    // Simulation
-    // Build quadtree of all particles
+    // Build quadtree and simulate
     QuadTree tree;
     QuadTree::buildQuadTree(relevParticles, tree);
-    // Update myParticles
-    myParticles = simulateStep(tree, myParticles, stepParams);
+    simulateStep(tree, myParticles, stepParams);
     
     // Update allParticles
     for(int i=0; i<nproc; i++)
@@ -246,7 +246,8 @@ int main(int argc, char *argv[]) {
       recv_buffer_rem -= numel;
     }
     memcpy(recv_buffer, &myParticles[0], myParticles.size()*sizeof(Particle));
-    // Synch
+
+    // Sync
     MPI_Barrier(MPI_COMM_WORLD);
     
   }
@@ -255,23 +256,10 @@ int main(int argc, char *argv[]) {
 
   if (pid == 0) {
     printf("total simulation time: %.6fs\n", totalSimulationTime);
-    // TODO: allParticles is jumbled; check if sorting to pass test ok?
-    // TODO: fix the worst freaking sorting code ever written >:(
-    std::vector<Particle> logParticles;
-    int target_idx=0;
-    for(int i=0; i<allParticles.size(); i++)
-    {
-      for(int j=0; j<allParticles.size(); j++)
-      {
-        if(allParticles[j].id == target_idx)
-        {
-          logParticles.push_back(allParticles[j]);
-          break;
-        }
-      }
-      target_idx++;
-    }
-    saveToFile(options.outputFile, logParticles);
+
+    // allParticles is jumbled, so sort by id to fix
+    std::sort(allParticles.begin(), allParticles.end(), [](const Particle& a, const Particle& b) {return a.id < b.id;});
+    saveToFile(options.outputFile, allParticles);
   }
 
   MPI_Finalize();
