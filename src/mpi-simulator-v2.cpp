@@ -57,7 +57,7 @@ std::vector<Particle> binFilter(const BinInfo &binInfo, const std::vector<Partic
 }
 
 // Given all particles, compute minimum and maximum bounds
-void getBounds(const std::vector<Particle> &particles, Vec2 &bmin, Vec2 &bmax, float offset=0.01)
+void getBounds(const std::vector<Particle> &particles, Vec2 &bmin, Vec2 &bmax, float offset=5)
 {
   Vec2 bmin_temp(1e30f,1e30f);
   Vec2 bmax_temp(-1e30f,-1e30f);
@@ -79,10 +79,10 @@ void getBounds(const std::vector<Particle> &particles, Vec2 &bmin, Vec2 &bmax, f
 }
 
 // Update grid info
-void updateGridInfo(GridInfo &gridInfo, const std::vector<Particle> &particles, int nproc)
+void updateGridInfo(GridInfo &gridInfo, const std::vector<Particle> &particles, int nproc, float offset=0.1)
 {
     // Update bounds
-    getBounds(particles, gridInfo.gridMin, gridInfo.gridMax);
+    getBounds(particles, gridInfo.gridMin, gridInfo.gridMax, offset);
     // Update number of columns and rows
     int sqrtNproc = int(sqrt(nproc));
     gridInfo.numRows = sqrtNproc;
@@ -177,6 +177,7 @@ int main(int argc, char *argv[]) {
   BinInfo binInfo;
   std::vector<int> relevantPIDs;
   Particle *recv_buffer;
+  Particle *recv_buffer_start;
   int recv_buffer_rem;
   std::vector<MPI_Request> requests(nproc);
   std::vector<MPI_Status> statuses(nproc);
@@ -187,7 +188,7 @@ int main(int argc, char *argv[]) {
 
   for (int timestep = 0; timestep < options.numIterations; timestep++) {
     // Update grid and bin using allParticles
-    updateGridInfo(gridInfo, allParticles, nproc);
+    updateGridInfo(gridInfo, allParticles, nproc, stepParams.cullRadius);
     updateBinInfo(binInfo, gridInfo, pid);
     // Compute myParticles
     myParticles = binFilter(binInfo, allParticles);
@@ -203,12 +204,13 @@ int main(int argc, char *argv[]) {
     }
     // Receive info
     MPI_Status comm_status;
-    relevParticles.resize(allParticles.size());
-    recv_buffer = &relevParticles[0];
-    recv_buffer_rem = relevParticles.size();
 
     // Sync
     MPI_Barrier(MPI_COMM_WORLD);
+
+    recv_buffer_start = new Particle[allParticles.size()];
+    recv_buffer_rem = allParticles.size();
+    recv_buffer = recv_buffer_start;
     
     for(int i = 0; i < relevantPIDs.size(); i++)
     {
@@ -220,10 +222,17 @@ int main(int argc, char *argv[]) {
       recv_buffer_rem -= numel;
     }
     MPI_Waitall(int(relevantPIDs.size()), &requests[0], &statuses[0]);
+
+    // Copy recv buffer into relevParticles
+    relevParticles.resize((allParticles.size() - recv_buffer_rem) + myParticles.size());
+    std::copy(recv_buffer_start, recv_buffer, relevParticles.begin());
+    
     // Add own particles
-    memcpy(recv_buffer, &myParticles[0], myParticles.size()*sizeof(Particle));
-    recv_buffer_rem -= myParticles.size();
-    relevParticles.resize(relevParticles.size()-recv_buffer_rem);
+    std::copy(myParticles.begin(), myParticles.end(), relevParticles.end() - myParticles.size());
+
+    delete[] recv_buffer_start;
+    recv_buffer = nullptr;
+    recv_buffer_start = nullptr;
 
     // Sync
     MPI_Barrier(MPI_COMM_WORLD);
@@ -244,8 +253,9 @@ int main(int argc, char *argv[]) {
     // Sync
     MPI_Barrier(MPI_COMM_WORLD);
     
-    recv_buffer = &allParticles[0];
+    recv_buffer_start = new Particle[allParticles.size()];
     recv_buffer_rem = allParticles.size();
+    recv_buffer = recv_buffer_start;
     for(int i=0; i < nproc; i++)
     {
       if(i==pid)
@@ -258,7 +268,21 @@ int main(int argc, char *argv[]) {
     }
     MPI_Waitall(pid, &requests[0], MPI_STATUSES_IGNORE);
     MPI_Waitall(nproc-pid-1, &requests[pid+1], MPI_STATUSES_IGNORE);
-    memcpy(recv_buffer, &myParticles[0], myParticles.size()*sizeof(Particle));
+
+    // Copy from recv_buffer_start to allParticles
+    std::copy(recv_buffer_start, recv_buffer, allParticles.begin());
+    
+    // Add own particles
+    std::copy(myParticles.begin(), myParticles.end(), allParticles.end() - myParticles.size());
+
+    delete[] recv_buffer_start;
+    recv_buffer = nullptr;
+    recv_buffer_start = nullptr;
+
+    // int myNum = (int) myParticles.size();
+    // int allNum;
+    // MPI_Allreduce(&myNum, &allNum, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+    // printf("(%3d %d) \t| %4d %4d %d %d\n", pid, timestep, myParticles.size(), recv_buffer_rem, myParticles.size() == recv_buffer_rem, allNum);
 
     // Sync
     MPI_Barrier(MPI_COMM_WORLD);
