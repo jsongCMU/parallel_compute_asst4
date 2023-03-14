@@ -57,7 +57,7 @@ std::vector<Particle> binFilter(const BinInfo &binInfo, const std::vector<Partic
 }
 
 // Given all particles, compute minimum and maximum bounds
-void getBounds(const std::vector<Particle> &particles, Vec2 &bmin, Vec2 &bmax, float offset=5)
+void getBounds(const std::vector<Particle> &particles, Vec2 &bmin, Vec2 &bmax, float offset)
 {
   Vec2 bmin_temp(1e30f,1e30f);
   Vec2 bmax_temp(-1e30f,-1e30f);
@@ -79,7 +79,7 @@ void getBounds(const std::vector<Particle> &particles, Vec2 &bmin, Vec2 &bmax, f
 }
 
 // Update grid info
-void updateGridInfo(GridInfo &gridInfo, const std::vector<Particle> &particles, int nproc, float offset=0.1)
+void updateGridInfo(GridInfo &gridInfo, const std::vector<Particle> &particles, int nproc, float offset=5)
 {
     // Update bounds
     getBounds(particles, gridInfo.gridMin, gridInfo.gridMax, offset);
@@ -97,12 +97,12 @@ void updateBinInfo(BinInfo &binInfo, const GridInfo &gridInfo, const int pid)
 {
     binInfo.col = pid % gridInfo.numCols;
     binInfo.row = pid / gridInfo.numCols;
-    binInfo.binMin = {
-        gridInfo.gridMin.x+binInfo.col*gridInfo.binDimX,
-        gridInfo.gridMin.y+binInfo.row*gridInfo.binDimY};
-    binInfo.binMax = {
-        binInfo.binMin.x+gridInfo.binDimX,
-        binInfo.binMin.y+gridInfo.binDimY
+    binInfo.binMin = {gridInfo.gridMin.x, gridInfo.gridMin.y};
+    for(int i=0; i<binInfo.col; i++)
+        binInfo.binMin.x+=gridInfo.binDimX;
+    for(int i=0; i<binInfo.row; i++)
+        binInfo.binMin.y+=gridInfo.binDimY;
+    binInfo.binMax = {binInfo.binMin.x+gridInfo.binDimX, binInfo.binMin.y+gridInfo.binDimY
     };
 }
 
@@ -188,7 +188,7 @@ int main(int argc, char *argv[]) {
 
   for (int timestep = 0; timestep < options.numIterations; timestep++) {
     // Update grid and bin using allParticles
-    updateGridInfo(gridInfo, allParticles, nproc, stepParams.cullRadius);
+    updateGridInfo(gridInfo, allParticles, nproc);
     updateBinInfo(binInfo, gridInfo, pid);
     // Compute myParticles
     myParticles = binFilter(binInfo, allParticles);
