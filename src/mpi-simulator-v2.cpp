@@ -178,6 +178,8 @@ int main(int argc, char *argv[]) {
   std::vector<int> relevantPIDs;
   Particle *recv_buffer;
   int recv_buffer_rem;
+  std::vector<MPI_Request> requests(nproc);
+  std::vector<MPI_Status> statuses(nproc);
 
   // Don't change the timeing for totalSimulationTime.
   MPI_Barrier(MPI_COMM_WORLD);
@@ -195,10 +197,9 @@ int main(int argc, char *argv[]) {
 
     // Send info
     int tag_id = 0; // TODO: change later?
-    MPI_Request tx_status; // TODO: keep or nah?
     for(int i = 0; i < relevantPIDs.size(); i++)
     {
-        MPI_Isend(&myParticles[0], myParticles.size(), particleType, relevantPIDs[i], tag_id, MPI_COMM_WORLD, &tx_status);
+        MPI_Isend(&myParticles[0], myParticles.size(), particleType, relevantPIDs[i], tag_id, MPI_COMM_WORLD, &requests[i]);
     }
     // Receive info
     MPI_Status comm_status;
@@ -218,6 +219,7 @@ int main(int argc, char *argv[]) {
       recv_buffer += numel;
       recv_buffer_rem -= numel;
     }
+    MPI_Waitall(int(relevantPIDs.size()), &requests[0], &statuses[0]);
     // Add own particles
     memcpy(recv_buffer, &myParticles[0], myParticles.size()*sizeof(Particle));
     recv_buffer_rem -= myParticles.size();
@@ -236,7 +238,7 @@ int main(int argc, char *argv[]) {
     {
       if(i==pid)
         continue;
-      MPI_Isend(&myParticles[0], myParticles.size(), particleType, i, tag_id, MPI_COMM_WORLD, &tx_status);
+      MPI_Isend(&myParticles[0], myParticles.size(), particleType, i, tag_id, MPI_COMM_WORLD, &requests[i]);
     }
 
     // Sync
@@ -248,13 +250,14 @@ int main(int argc, char *argv[]) {
     {
       if(i==pid)
         continue;
-      
       int numel;
       MPI_Recv(recv_buffer, recv_buffer_rem, particleType, i, tag_id, MPI_COMM_WORLD, &comm_status);
       MPI_Get_count(&comm_status, particleType, &numel);
       recv_buffer += numel;
       recv_buffer_rem -= numel;
     }
+    MPI_Waitall(pid, &requests[0], MPI_STATUSES_IGNORE);
+    MPI_Waitall(nproc-pid-1, &requests[pid+1], MPI_STATUSES_IGNORE);
     memcpy(recv_buffer, &myParticles[0], myParticles.size()*sizeof(Particle));
 
     // Sync
