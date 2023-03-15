@@ -184,7 +184,8 @@ int main(int argc, char *argv[]) {
   MPI_Status comm_status;
   int numel;
   QuadTree tree;
-  const int tag_id = 0;
+  const int tag_id_relevant = 0;
+  const int tag_id_all = 1;
 
   // Don't change the timeing for totalSimulationTime.
   MPI_Barrier(MPI_COMM_WORLD);
@@ -203,7 +204,7 @@ int main(int argc, char *argv[]) {
     // Send info
     for(int i = 0; i < relevantPIDs.size(); i++)
     {
-        MPI_Isend(&myParticles[0], myParticles.size(), particleType, relevantPIDs[i], tag_id, MPI_COMM_WORLD, &requests[i]);
+        MPI_Isend(&myParticles[0], myParticles.size(), particleType, relevantPIDs[i], tag_id_relevant, MPI_COMM_WORLD, &requests[i]);
     }
 
     // Receive info
@@ -211,7 +212,7 @@ int main(int argc, char *argv[]) {
     recv_buffer = recv_buffer_start;
     for(int i = 0; i < relevantPIDs.size(); i++)
     {
-      MPI_Recv(recv_buffer, recv_buffer_rem, particleType, relevantPIDs[i], tag_id, MPI_COMM_WORLD, &comm_status);
+      MPI_Recv(recv_buffer, recv_buffer_rem, particleType, relevantPIDs[i], tag_id_relevant, MPI_COMM_WORLD, &comm_status);
       MPI_Get_count(&comm_status, particleType, &numel);
       // Update recv buffer
       recv_buffer += numel;
@@ -235,7 +236,7 @@ int main(int argc, char *argv[]) {
     {
       if(i==pid)
         continue;
-      MPI_Isend(&myParticles[0], myParticles.size(), particleType, i, tag_id, MPI_COMM_WORLD, &requests[i]);
+      MPI_Isend(&myParticles[0], myParticles.size(), particleType, i, tag_id_all, MPI_COMM_WORLD, &requests[i]);
     }
     recv_buffer_rem = allParticles.size();
     recv_buffer = recv_buffer_start;
@@ -243,7 +244,7 @@ int main(int argc, char *argv[]) {
     {
       if(i==pid)
         continue;
-      MPI_Recv(recv_buffer, recv_buffer_rem, particleType, i, tag_id, MPI_COMM_WORLD, &comm_status);
+      MPI_Recv(recv_buffer, recv_buffer_rem, particleType, i, tag_id_all, MPI_COMM_WORLD, &comm_status);
       MPI_Get_count(&comm_status, particleType, &numel);
       recv_buffer += numel;
       recv_buffer_rem -= numel;
