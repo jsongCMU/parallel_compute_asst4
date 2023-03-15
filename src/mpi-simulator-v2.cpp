@@ -43,17 +43,16 @@ void simulateStep(const QuadTree &quadTree,
 }
 
 // Given all particles, return only particles that matter to current bin
-std::vector<Particle> binFilter(const BinInfo &binInfo, const std::vector<Particle> &allParticles)
+void binFilter(const BinInfo &binInfo, const std::vector<Particle> &allParticles, std::vector<Particle> &output)
 {
-  std::vector<Particle> result;
+  output.clear();
   for(const Particle& particle : allParticles)
   {
     bool isXValid = (particle.position.x >= binInfo.binMin.x) && (particle.position.x < binInfo.binMax.x);
     bool isYValid = (particle.position.y >= binInfo.binMin.y) && (particle.position.y < binInfo.binMax.y);
     if(isXValid && isYValid)
-      result.push_back(particle);
+      output.push_back(particle);
   }
-  return result;
 }
 
 // Given all particles, compute minimum and maximum bounds
@@ -106,34 +105,34 @@ void updateBinInfo(BinInfo &binInfo, const GridInfo &gridInfo, const int pid)
     };
 }
 
-std::vector<int> getRelevantNeighbors(const GridInfo &gridInfo, const BinInfo &binInfo, const float radius)
+void getRelevantNeighbors(const GridInfo &gridInfo, const BinInfo &binInfo, const float radius, std::vector<int> &output)
 {
-    // Expand boundaries by radius
-    Vec2 bminExpand = {binInfo.binMin.x-radius, binInfo.binMin.y-radius};
-    Vec2 bmaxExpand = {binInfo.binMax.x+radius, binInfo.binMax.y+radius};
-    // Compute range of rows and columns that touch boundary
-    int colStart = (bminExpand.x-gridInfo.gridMin.x)/gridInfo.binDimX;
-    int colEnd = (bmaxExpand.x-gridInfo.gridMin.x)/gridInfo.binDimX;
-    int rowStart = (bminExpand.y-gridInfo.gridMin.y)/gridInfo.binDimY;
-    int rowEnd = (bmaxExpand.y-gridInfo.gridMin.y)/gridInfo.binDimY;
-    // Cap
-    colStart = (colStart < 0) ? 0 : colStart;
-    colEnd = (colEnd > gridInfo.numCols-1) ? gridInfo.numCols-1 : colEnd;
-    rowStart = (rowStart < 0) ? 0 : rowStart;
-    rowEnd = (rowEnd > gridInfo.numRows-1) ? gridInfo.numRows-1 : rowEnd;
-    // Accumulate
-    std::vector<int> relevant_pids;
-    for(int row = rowStart; row < rowEnd+1; row++)
-    {
-        for(int col = colStart; col < colEnd+1; col++)
-        {
-            if(col == binInfo.col && row == binInfo.row)
-                continue;
-            relevant_pids.push_back(row*gridInfo.numCols+col);
-        }
-    }
-    return relevant_pids;
+  output.clear();
 
+  // Expand boundaries by radius
+  Vec2 bminExpand = {binInfo.binMin.x-radius, binInfo.binMin.y-radius};
+  Vec2 bmaxExpand = {binInfo.binMax.x+radius, binInfo.binMax.y+radius};
+  // Compute range of rows and columns that touch boundary
+  int colStart = (bminExpand.x-gridInfo.gridMin.x)/gridInfo.binDimX;
+  int colEnd = (bmaxExpand.x-gridInfo.gridMin.x)/gridInfo.binDimX;
+  int rowStart = (bminExpand.y-gridInfo.gridMin.y)/gridInfo.binDimY;
+  int rowEnd = (bmaxExpand.y-gridInfo.gridMin.y)/gridInfo.binDimY;
+  // Cap
+  colStart = (colStart < 0) ? 0 : colStart;
+  colEnd = (colEnd > gridInfo.numCols-1) ? gridInfo.numCols-1 : colEnd;
+  rowStart = (rowStart < 0) ? 0 : rowStart;
+  rowEnd = (rowEnd > gridInfo.numRows-1) ? gridInfo.numRows-1 : rowEnd;
+  // Accumulate
+  std::vector<int> relevant_pids;
+  for(int row = rowStart; row < rowEnd+1; row++)
+  {
+      for(int col = colStart; col < colEnd+1; col++)
+      {
+          if(col == binInfo.col && row == binInfo.row)
+              continue;
+          output.push_back(row*gridInfo.numCols+col);
+      }
+  }
 }
 
 int main(int argc, char *argv[]) {
@@ -196,10 +195,10 @@ int main(int argc, char *argv[]) {
     updateGridInfo(gridInfo, allParticles, nproc);
     updateBinInfo(binInfo, gridInfo, pid);
     // Compute myParticles
-    myParticles = binFilter(binInfo, allParticles);
+    binFilter(binInfo, allParticles, myParticles);
     
     // Get PIDs to send to / receive from
-    relevantPIDs = getRelevantNeighbors(gridInfo, binInfo, stepParams.cullRadius);
+    getRelevantNeighbors(gridInfo, binInfo, stepParams.cullRadius, relevantPIDs);
 
     // Send info
     for(int i = 0; i < relevantPIDs.size(); i++)
@@ -257,9 +256,6 @@ int main(int argc, char *argv[]) {
     
     // Add own particles
     std::move(myParticles.begin(), myParticles.end(), allParticles.end() - myParticles.size());
-
-    // Sync
-    MPI_Barrier(MPI_COMM_WORLD);
   }
   MPI_Barrier(MPI_COMM_WORLD);
   double totalSimulationTime = totalSimulationTimer.elapsed();
