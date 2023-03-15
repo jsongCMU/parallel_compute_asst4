@@ -181,6 +181,8 @@ int main(int argc, char *argv[]) {
   int recv_buffer_rem;
   std::vector<MPI_Request> requests(nproc);
   std::vector<MPI_Status> statuses(nproc);
+  MPI_Status comm_status;
+  int numel;
 
   // Don't change the timeing for totalSimulationTime.
   MPI_Barrier(MPI_COMM_WORLD);
@@ -203,18 +205,12 @@ int main(int argc, char *argv[]) {
         MPI_Isend(&myParticles[0], myParticles.size(), particleType, relevantPIDs[i], tag_id, MPI_COMM_WORLD, &requests[i]);
     }
     // Receive info
-    MPI_Status comm_status;
-
-    // Sync
-    MPI_Barrier(MPI_COMM_WORLD);
-
     recv_buffer_start = new Particle[allParticles.size()];
     recv_buffer_rem = allParticles.size();
     recv_buffer = recv_buffer_start;
     
     for(int i = 0; i < relevantPIDs.size(); i++)
     {
-      int numel;
       MPI_Recv(recv_buffer, recv_buffer_rem, particleType, relevantPIDs[i], tag_id, MPI_COMM_WORLD, &comm_status);
       MPI_Get_count(&comm_status, particleType, &numel);
       // Update recv buffer
@@ -234,9 +230,6 @@ int main(int argc, char *argv[]) {
     recv_buffer = nullptr;
     recv_buffer_start = nullptr;
 
-    // Sync
-    MPI_Barrier(MPI_COMM_WORLD);
-
     // Build quadtree and simulate
     QuadTree tree;
     QuadTree::buildQuadTree(relevParticles, tree);
@@ -249,9 +242,6 @@ int main(int argc, char *argv[]) {
         continue;
       MPI_Isend(&myParticles[0], myParticles.size(), particleType, i, tag_id, MPI_COMM_WORLD, &requests[i]);
     }
-
-    // Sync
-    MPI_Barrier(MPI_COMM_WORLD);
     
     recv_buffer_start = new Particle[allParticles.size()];
     recv_buffer_rem = allParticles.size();
@@ -260,7 +250,6 @@ int main(int argc, char *argv[]) {
     {
       if(i==pid)
         continue;
-      int numel;
       MPI_Recv(recv_buffer, recv_buffer_rem, particleType, i, tag_id, MPI_COMM_WORLD, &comm_status);
       MPI_Get_count(&comm_status, particleType, &numel);
       recv_buffer += numel;
