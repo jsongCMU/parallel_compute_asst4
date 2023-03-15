@@ -177,12 +177,14 @@ int main(int argc, char *argv[]) {
   BinInfo binInfo;
   std::vector<int> relevantPIDs;
   Particle *recv_buffer;
-  Particle *recv_buffer_start;
+  Particle *const recv_buffer_start = new Particle[allParticles.size()];
   int recv_buffer_rem;
   std::vector<MPI_Request> requests(nproc);
   std::vector<MPI_Status> statuses(nproc);
   MPI_Status comm_status;
   int numel;
+  QuadTree tree;
+  const int tag_id = 0;
 
   // Don't change the timeing for totalSimulationTime.
   MPI_Barrier(MPI_COMM_WORLD);
@@ -199,16 +201,14 @@ int main(int argc, char *argv[]) {
     relevantPIDs = getRelevantNeighbors(gridInfo, binInfo, stepParams.cullRadius);
 
     // Send info
-    int tag_id = 0; // TODO: change later?
     for(int i = 0; i < relevantPIDs.size(); i++)
     {
         MPI_Isend(&myParticles[0], myParticles.size(), particleType, relevantPIDs[i], tag_id, MPI_COMM_WORLD, &requests[i]);
     }
+
     // Receive info
-    recv_buffer_start = new Particle[allParticles.size()];
     recv_buffer_rem = allParticles.size();
     recv_buffer = recv_buffer_start;
-    
     for(int i = 0; i < relevantPIDs.size(); i++)
     {
       MPI_Recv(recv_buffer, recv_buffer_rem, particleType, relevantPIDs[i], tag_id, MPI_COMM_WORLD, &comm_status);
@@ -217,7 +217,7 @@ int main(int argc, char *argv[]) {
       recv_buffer += numel;
       recv_buffer_rem -= numel;
     }
-    MPI_Waitall(int(relevantPIDs.size()), &requests[0], &statuses[0]);
+    MPI_Waitall(relevantPIDs.size(), &requests[0], &statuses[0]);
 
     // Copy recv buffer into relevParticles
     relevParticles.resize((allParticles.size() - recv_buffer_rem) + myParticles.size());
@@ -226,12 +226,7 @@ int main(int argc, char *argv[]) {
     // Add own particles
     std::copy(myParticles.begin(), myParticles.end(), relevParticles.end() - myParticles.size());
 
-    delete[] recv_buffer_start;
-    recv_buffer = nullptr;
-    recv_buffer_start = nullptr;
-
     // Build quadtree and simulate
-    QuadTree tree;
     QuadTree::buildQuadTree(relevParticles, tree);
     simulateStep(tree, myParticles, stepParams);
 
@@ -242,8 +237,6 @@ int main(int argc, char *argv[]) {
         continue;
       MPI_Isend(&myParticles[0], myParticles.size(), particleType, i, tag_id, MPI_COMM_WORLD, &requests[i]);
     }
-    
-    recv_buffer_start = new Particle[allParticles.size()];
     recv_buffer_rem = allParticles.size();
     recv_buffer = recv_buffer_start;
     for(int i=0; i < nproc; i++)
@@ -264,18 +257,10 @@ int main(int argc, char *argv[]) {
     // Add own particles
     std::copy(myParticles.begin(), myParticles.end(), allParticles.end() - myParticles.size());
 
-    delete[] recv_buffer_start;
-    recv_buffer = nullptr;
-    recv_buffer_start = nullptr;
-
-    // int myNum = (int) myParticles.size();
-    // int allNum;
-    // MPI_Allreduce(&myNum, &allNum, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-    // printf("(%3d %d) \t| %4d %4d %d %d\n", pid, timestep, myParticles.size(), recv_buffer_rem, myParticles.size() == recv_buffer_rem, allNum);
-
     // Sync
     MPI_Barrier(MPI_COMM_WORLD);
   }
+  delete[] recv_buffer_start;
 
   MPI_Barrier(MPI_COMM_WORLD);
   double totalSimulationTime = totalSimulationTimer.elapsed();
