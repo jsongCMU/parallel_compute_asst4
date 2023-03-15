@@ -62,20 +62,34 @@ public:
     tree.bmin = bmin;
     tree.bmax = bmax;
 
-    tree.root = buildQuadTreeImpl(particles, bmin, bmax);
+    int idx[particles.size()];
+
+    for(int i = 0; i < particles.size(); i++)
+      idx[i] = i;
+
+    tree.root = buildQuadTreeImpl(particles, bmin, bmax, particles.size(), idx);
   }
 
 private:
   static std::unique_ptr<QuadTreeNode>
   buildQuadTreeImpl(const std::vector<Particle> &particles, Vec2 bmin,
-                    Vec2 bmax) {
+                    Vec2 bmax, int N, int* idx) {
     // TODO: paste your sequential implementation in Assignment 3 here.
     // (or you may also rewrite a new version)
     std::unique_ptr<QuadTreeNode> curNode(new QuadTreeNode);
-    if (particles.size() <= QuadTreeLeafSize)
-    { 
+    int topLeftCount = 0;
+    int topRightCount = 0;
+    int botLeftCount = 0;
+    int botRightCount = 0;
+
+    if (N <= QuadTreeLeafSize)
+    {
       curNode->isLeaf = true;
-      curNode->particles = particles;
+      curNode->particles.reserve(N);
+      
+      for (int i = 0; i < N; i++)
+        curNode->particles.push_back(particles[idx[i]]);
+
       return curNode;
     }
     else
@@ -85,35 +99,37 @@ private:
       pivot.x = (bmax.x + bmin.x) / 2;
       pivot.y = (bmax.y + bmin.y) / 2;
 
-      std::vector<Particle> childVectors[4];
-
-      for(const Particle &p : particles)
+      int topLeftIdx[N];
+      int topRightIdx[N];
+      int botLeftIdx[N];
+      int botRightIdx[N];
+        
+      // Iterate over index
+      for (int i = 0; i < N; i++)
       {
+        int particleIdx = idx[i];
+        const Particle &p = particles[particleIdx];
         bool isLeft = p.position.x < pivot.x;
         bool isUp = p.position.y < pivot.y;
 
         if (isLeft && isUp)
-          childVectors[0].push_back(p);
+          topLeftIdx[topLeftCount++] = particleIdx;
         else if (!isLeft && isUp)
-          childVectors[1].push_back(p);
+          topRightIdx[topRightCount++] = particleIdx;
         else if (isLeft && !isUp)
-          childVectors[2].push_back(p);
+          botLeftIdx[botLeftCount++] = particleIdx;
         else
-          childVectors[3].push_back(p);
+          botRightIdx[botRightCount++] = particleIdx;
       }
 
-      // Create the subtrees for this node
-      curNode->children[0] = buildQuadTreeImpl(childVectors[0], bmin, pivot);
-
+      curNode->children[0] = buildQuadTreeImpl(particles, bmin, pivot, topLeftCount, topLeftIdx);
       Vec2 topRightMin = {pivot.x, bmin.y};
       Vec2 topRightMax = {bmax.x, pivot.y};
-      curNode->children[1] = buildQuadTreeImpl(childVectors[1], topRightMin, topRightMax);
-
+      curNode->children[1] = buildQuadTreeImpl(particles, topRightMin, topRightMax, topRightCount, topRightIdx);
       Vec2 bottomLeftMin = {bmin.x, pivot.y};
       Vec2 bottomLeftMax = {pivot.x, bmax.y};
-      curNode->children[2] = buildQuadTreeImpl(childVectors[2], bottomLeftMin, bottomLeftMax);
-
-      curNode->children[3] = buildQuadTreeImpl(childVectors[3], pivot, bmax);
+      curNode->children[2] = buildQuadTreeImpl(particles, bottomLeftMin, bottomLeftMax, botLeftCount, botLeftIdx);
+      curNode->children[3] = buildQuadTreeImpl(particles, pivot, bmax, botRightCount, botRightIdx);
 
       return curNode;
     }

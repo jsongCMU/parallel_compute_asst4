@@ -79,7 +79,7 @@ void getBounds(const std::vector<Particle> &particles, Vec2 &bmin, Vec2 &bmax, f
 }
 
 // Update grid info
-void updateGridInfo(GridInfo &gridInfo, const std::vector<Particle> &particles, int nproc, float offset=5)
+void updateGridInfo(GridInfo &gridInfo, const std::vector<Particle> &particles, int nproc, float offset=0.01)
 {
     // Update bounds
     getBounds(particles, gridInfo.gridMin, gridInfo.gridMax, offset);
@@ -222,10 +222,10 @@ int main(int argc, char *argv[]) {
 
     // Copy recv buffer into relevParticles
     relevParticles.resize((allParticles.size() - recv_buffer_rem) + myParticles.size());
-    std::copy(recv_buffer_start, recv_buffer, relevParticles.begin());
+    std::move(recv_buffer_start, recv_buffer, relevParticles.begin());
     
     // Add own particles
-    std::copy(myParticles.begin(), myParticles.end(), relevParticles.end() - myParticles.size());
+    std::move(myParticles.begin(), myParticles.end(), relevParticles.end() - myParticles.size());
 
     // Build quadtree and simulate
     QuadTree::buildQuadTree(relevParticles, tree);
@@ -253,18 +253,18 @@ int main(int argc, char *argv[]) {
     MPI_Waitall(nproc-pid-1, &requests[pid+1], MPI_STATUSES_IGNORE);
 
     // Copy from recv_buffer_start to allParticles
-    std::copy(recv_buffer_start, recv_buffer, allParticles.begin());
+    std::move(recv_buffer_start, recv_buffer, allParticles.begin());
     
     // Add own particles
-    std::copy(myParticles.begin(), myParticles.end(), allParticles.end() - myParticles.size());
+    std::move(myParticles.begin(), myParticles.end(), allParticles.end() - myParticles.size());
 
     // Sync
     MPI_Barrier(MPI_COMM_WORLD);
   }
-  delete[] recv_buffer_start;
-
   MPI_Barrier(MPI_COMM_WORLD);
   double totalSimulationTime = totalSimulationTimer.elapsed();
+  
+  delete[] recv_buffer_start;
 
   if (pid == 0) {
     printf("total simulation time: %.6fs\n", totalSimulationTime);
