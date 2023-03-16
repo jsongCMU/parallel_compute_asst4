@@ -21,7 +21,7 @@ struct BinInfo{
     Vec2 binMax;
 };
 
-void simulateStep(const QuadTree &quadTree,
+inline void simulateStep(const QuadTree &quadTree,
                   std::vector<Particle> &particles,
                   const StepParameters& params) {
   // Update particles for this thread
@@ -43,7 +43,7 @@ void simulateStep(const QuadTree &quadTree,
 }
 
 // Given all particles, return particles are owned and relevant to current bin
-void binFilter(const BinInfo &binInfo, const std::vector<Particle> &allParticles, std::vector<Particle> &myParticles, std::vector<Particle> &relevParticles, const float radius)
+inline void binFilter(const BinInfo &binInfo, const std::vector<Particle> &allParticles, std::vector<Particle> &myParticles, std::vector<Particle> &relevParticles, const float radius)
 {
   myParticles.clear();
   relevParticles.clear();
@@ -69,7 +69,7 @@ void binFilter(const BinInfo &binInfo, const std::vector<Particle> &allParticles
 }
 
 // Given all particles, compute minimum and maximum bounds
-void getBounds(const std::vector<Particle> &particles, Vec2 &bmin, Vec2 &bmax, float offset)
+inline void getBounds(const std::vector<Particle> &particles, Vec2 &bmin, Vec2 &bmax, float offset)
 {
   Vec2 bmin_temp(1e30f,1e30f);
   Vec2 bmax_temp(-1e30f,-1e30f);
@@ -91,7 +91,7 @@ void getBounds(const std::vector<Particle> &particles, Vec2 &bmin, Vec2 &bmax, f
 }
 
 // Update grid info
-void updateGridInfo(GridInfo &gridInfo, const std::vector<Particle> &particles, int nproc, float offset=0.01)
+inline void updateGridInfo(GridInfo &gridInfo, const std::vector<Particle> &particles, int nproc, float offset=0.01)
 {
     // Update bounds
     getBounds(particles, gridInfo.gridMin, gridInfo.gridMax, offset);
@@ -105,7 +105,7 @@ void updateGridInfo(GridInfo &gridInfo, const std::vector<Particle> &particles, 
 }
 
 // Update bin info
-void updateBinInfo(BinInfo &binInfo, const GridInfo &gridInfo, const int pid)
+inline void updateBinInfo(BinInfo &binInfo, const GridInfo &gridInfo, const int pid)
 {
     binInfo.col = pid % gridInfo.numCols;
     binInfo.row = pid / gridInfo.numCols;
