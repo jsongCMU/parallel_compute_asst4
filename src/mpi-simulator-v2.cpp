@@ -42,16 +42,29 @@ void simulateStep(const QuadTree &quadTree,
   particles.swap(result);
 }
 
-// Given all particles, return only particles that matter to current bin
-void binFilter(const BinInfo &binInfo, const std::vector<Particle> &allParticles, std::vector<Particle> &output)
+// Given all particles, return particles are owned and relevant to current bin
+void binFilter(const BinInfo &binInfo, const std::vector<Particle> &allParticles, std::vector<Particle> &myParticles, std::vector<Particle> &relevParticles, const float radius)
 {
-  output.clear();
+  myParticles.clear();
+  relevParticles.clear();
+  bool isXValid, isYValid;
   for(const Particle& particle : allParticles)
   {
-    bool isXValid = (particle.position.x >= binInfo.binMin.x) && (particle.position.x < binInfo.binMax.x);
-    bool isYValid = (particle.position.y >= binInfo.binMin.y) && (particle.position.y < binInfo.binMax.y);
+    isXValid = (particle.position.x >= binInfo.binMin.x) && (particle.position.x < binInfo.binMax.x);
+    isYValid = (particle.position.y >= binInfo.binMin.y) && (particle.position.y < binInfo.binMax.y);
     if(isXValid && isYValid)
-      output.push_back(particle);
+    {
+      myParticles.push_back(particle);
+      relevParticles.push_back(particle);
+      continue;
+    }
+    isXValid = (particle.position.x >= binInfo.binMin.x-radius) && (particle.position.x < binInfo.binMax.x+radius);
+    isYValid = (particle.position.y >= binInfo.binMin.y-radius) && (particle.position.y < binInfo.binMax.y+radius);
+    if(isXValid && isYValid)
+    {
+      relevParticles.push_back(particle);
+      continue;
+    }
   }
 }
 
@@ -105,36 +118,6 @@ void updateBinInfo(BinInfo &binInfo, const GridInfo &gridInfo, const int pid)
     };
 }
 
-void getRelevantNeighbors(const GridInfo &gridInfo, const BinInfo &binInfo, const float radius, std::vector<int> &output)
-{
-  output.clear();
-
-  // Expand boundaries by radius
-  Vec2 bminExpand = {binInfo.binMin.x-radius, binInfo.binMin.y-radius};
-  Vec2 bmaxExpand = {binInfo.binMax.x+radius, binInfo.binMax.y+radius};
-  // Compute range of rows and columns that touch boundary
-  int colStart = (bminExpand.x-gridInfo.gridMin.x)/gridInfo.binDimX;
-  int colEnd = (bmaxExpand.x-gridInfo.gridMin.x)/gridInfo.binDimX;
-  int rowStart = (bminExpand.y-gridInfo.gridMin.y)/gridInfo.binDimY;
-  int rowEnd = (bmaxExpand.y-gridInfo.gridMin.y)/gridInfo.binDimY;
-  // Cap
-  colStart = (colStart < 0) ? 0 : colStart;
-  colEnd = (colEnd > gridInfo.numCols-1) ? gridInfo.numCols-1 : colEnd;
-  rowStart = (rowStart < 0) ? 0 : rowStart;
-  rowEnd = (rowEnd > gridInfo.numRows-1) ? gridInfo.numRows-1 : rowEnd;
-  // Accumulate
-  std::vector<int> relevant_pids;
-  for(int row = rowStart; row < rowEnd+1; row++)
-  {
-      for(int col = colStart; col < colEnd+1; col++)
-      {
-          if(col == binInfo.col && row == binInfo.row)
-              continue;
-          output.push_back(row*gridInfo.numCols+col);
-      }
-  }
-}
-
 int main(int argc, char *argv[]) {
   int pid;
   int nproc;
@@ -174,7 +157,6 @@ int main(int argc, char *argv[]) {
   std::vector<Particle> myParticles, relevParticles;
   GridInfo gridInfo;
   BinInfo binInfo;
-  std::vector<int> relevantPIDs;
   Particle *recv_buffer;
   Particle *const recv_buffer_start = new Particle[allParticles.size()];
   int recv_buffer_rem;
@@ -194,37 +176,8 @@ int main(int argc, char *argv[]) {
     // Update grid and bin using allParticles
     updateGridInfo(gridInfo, allParticles, nproc);
     updateBinInfo(binInfo, gridInfo, pid);
-    // Compute myParticles
-    binFilter(binInfo, allParticles, myParticles);
-    
-    // Get PIDs to send to / receive from
-    getRelevantNeighbors(gridInfo, binInfo, stepParams.cullRadius, relevantPIDs);
-
-    // Send info
-    for(int i = 0; i < relevantPIDs.size(); i++)
-    {
-        MPI_Isend(&myParticles[0], myParticles.size(), particleType, relevantPIDs[i], tag_id_relevant, MPI_COMM_WORLD, &requests[i]);
-    }
-
-    // Receive info
-    recv_buffer_rem = allParticles.size();
-    recv_buffer = recv_buffer_start;
-    for(int i = 0; i < relevantPIDs.size(); i++)
-    {
-      MPI_Recv(recv_buffer, recv_buffer_rem, particleType, relevantPIDs[i], tag_id_relevant, MPI_COMM_WORLD, &comm_status);
-      MPI_Get_count(&comm_status, particleType, &numel);
-      // Update recv buffer
-      recv_buffer += numel;
-      recv_buffer_rem -= numel;
-    }
-    MPI_Waitall(relevantPIDs.size(), &requests[0], &statuses[0]);
-
-    // Copy recv buffer into relevParticles
-    relevParticles.resize((allParticles.size() - recv_buffer_rem) + myParticles.size());
-    std::move(recv_buffer_start, recv_buffer, relevParticles.begin());
-    
-    // Add own particles
-    std::move(myParticles.begin(), myParticles.end(), relevParticles.end() - myParticles.size());
+    // Compute myParticles and relevParticles
+    binFilter(binInfo, allParticles, myParticles, relevParticles, stepParams.cullRadius);
 
     // Build quadtree and simulate
     QuadTree::buildQuadTree(relevParticles, tree);
