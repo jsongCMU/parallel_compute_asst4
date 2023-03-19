@@ -79,22 +79,33 @@ int main(int argc, char *argv[]) {
   newParticles.insert(newParticles.begin(), particles.begin()+particleDisplacements[pid], particles.begin()+particleDisplacements[pid]+particleCounts[pid]);
   
   // Don't change the timeing for totalSimulationTime.
+  if(pid==0)
+    printf("        depth, build quad, sim, update allParticles\n");
   MPI_Barrier(MPI_COMM_WORLD);
   Timer totalSimulationTimer;
+  Timer perSimTimer;
+  double T0, T1, T2; // build quad, sim, update allParticles
   int depth;
   for (int i = 0; i < options.numIterations; i++) {
     // Build quadtree of all particles
     QuadTree tree;
+    perSimTimer.reset();
     QuadTree::buildQuadTree(particles, tree, depth);
+    T0 = perSimTimer.elapsed();
 
     // Update subset of particles
+    perSimTimer.reset();
     simulateStep(tree, newParticles, stepParams);
+    T1 = perSimTimer.elapsed();
     
     // Share and get updates
+    perSimTimer.reset();
     MPI_Allgatherv(
       &newParticles[0], particleCounts[pid], particleType, // Send
       &particles[0], particleCounts, particleDisplacements, particleType, // Recieve
       MPI_COMM_WORLD);
+    T2 = perSimTimer.elapsed();
+    printf("%2d|%3d: %d, %f, %f, %f\n", i, pid, depth, T0, T1, T2);
   }
   MPI_Barrier(MPI_COMM_WORLD);
   double totalSimulationTime = totalSimulationTimer.elapsed();
