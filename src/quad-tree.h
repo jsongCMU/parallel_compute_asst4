@@ -46,7 +46,7 @@ public:
   }
 
   static void buildQuadTree(const std::vector<Particle> &particles,
-                            QuadTree &tree) {
+                            QuadTree &tree, int &depth) {
     // find bounds
     Vec2 bmin(1e30f, 1e30f);
     Vec2 bmax(-1e30f, -1e30f);
@@ -67,13 +67,14 @@ public:
     for(int i = 0; i < particles.size(); i++)
       idx[i] = i;
 
-    tree.root = buildQuadTreeImpl(particles, bmin, bmax, particles.size(), idx);
+    depth = 0;
+    tree.root = buildQuadTreeImpl(particles, bmin, bmax, particles.size(), idx, depth);
   }
 
 private:
   static std::unique_ptr<QuadTreeNode>
   buildQuadTreeImpl(const std::vector<Particle> &particles, Vec2 bmin,
-                    Vec2 bmax, int N, int* idx) {
+                    Vec2 bmax, int N, int* idx, int &depth) {
     // TODO: paste your sequential implementation in Assignment 3 here.
     // (or you may also rewrite a new version)
     std::unique_ptr<QuadTreeNode> curNode(new QuadTreeNode);
@@ -122,14 +123,20 @@ private:
           botRightIdx[botRightCount++] = particleIdx;
       }
 
-      curNode->children[0] = buildQuadTreeImpl(particles, bmin, pivot, topLeftCount, topLeftIdx);
+      int depths[] = {depth+1, depth+1, depth+1, depth+1};
+      curNode->children[0] = buildQuadTreeImpl(particles, bmin, pivot, topLeftCount, topLeftIdx, depths[0]);
       Vec2 topRightMin = {pivot.x, bmin.y};
       Vec2 topRightMax = {bmax.x, pivot.y};
-      curNode->children[1] = buildQuadTreeImpl(particles, topRightMin, topRightMax, topRightCount, topRightIdx);
+      curNode->children[1] = buildQuadTreeImpl(particles, topRightMin, topRightMax, topRightCount, topRightIdx, depths[1]);
       Vec2 bottomLeftMin = {bmin.x, pivot.y};
       Vec2 bottomLeftMax = {pivot.x, bmax.y};
-      curNode->children[2] = buildQuadTreeImpl(particles, bottomLeftMin, bottomLeftMax, botLeftCount, botLeftIdx);
-      curNode->children[3] = buildQuadTreeImpl(particles, pivot, bmax, botRightCount, botRightIdx);
+      curNode->children[2] = buildQuadTreeImpl(particles, bottomLeftMin, bottomLeftMax, botLeftCount, botLeftIdx, depths[2]);
+      curNode->children[3] = buildQuadTreeImpl(particles, pivot, bmax, botRightCount, botRightIdx, depths[3]);
+      for(int i=0; i<4; i++)
+      {
+        depth = (depths[i]>depth) ? depths[i] : depth;
+      }
+
 
       return curNode;
     }

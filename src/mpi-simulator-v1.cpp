@@ -81,10 +81,11 @@ int main(int argc, char *argv[]) {
   // Don't change the timeing for totalSimulationTime.
   MPI_Barrier(MPI_COMM_WORLD);
   Timer totalSimulationTimer;
+  int depth;
   for (int i = 0; i < options.numIterations; i++) {
     // Build quadtree of all particles
     QuadTree tree;
-    QuadTree::buildQuadTree(particles, tree);
+    QuadTree::buildQuadTree(particles, tree, depth);
 
     // Update subset of particles
     simulateStep(tree, newParticles, stepParams);

@@ -169,20 +169,30 @@ int main(int argc, char *argv[]) {
   const int tag_id_all = 1;
 
   // Don't change the timeing for totalSimulationTime.
+  if(pid==0)
+    printf("        depth, grid/binning, build quad, sim, update allParticles\n");
   MPI_Barrier(MPI_COMM_WORLD);
   Timer totalSimulationTimer;
-
+  Timer perSimTimer;
+  double T0, T1, T2, T3; // grid/binning, build quad, sim, update allParticles
+  int depth;
   for (int timestep = 0; timestep < options.numIterations; timestep++) {
+    perSimTimer.reset();
     // Update grid and bin using allParticles
     updateGridInfo(gridInfo, allParticles, nproc);
     updateBinInfo(binInfo, gridInfo, pid);
     // Compute myParticles and relevParticles
     binFilter(binInfo, allParticles, myParticles, relevParticles, stepParams.cullRadius);
-
+    T0 = perSimTimer.elapsed();
     // Build quadtree and simulate
-    QuadTree::buildQuadTree(relevParticles, tree);
+    perSimTimer.reset();
+    QuadTree::buildQuadTree(relevParticles, tree, depth);
+    T1 = perSimTimer.elapsed();
+    perSimTimer.reset();
     simulateStep(tree, myParticles, stepParams);
+    T2 = perSimTimer.elapsed();
 
+    perSimTimer.reset();
     // Update allParticles
     for(int i=0; i<nproc; i++)
     {
@@ -209,6 +219,8 @@ int main(int argc, char *argv[]) {
     
     // Add own particles
     std::move(myParticles.begin(), myParticles.end(), allParticles.end() - myParticles.size());
+    T3 = perSimTimer.elapsed();
+    printf("%2d|%3d: %d, %f, %f, %f, %f\n", timestep, pid, depth, T0, T1, T2, T3);
   }
   MPI_Barrier(MPI_COMM_WORLD);
   double totalSimulationTime = totalSimulationTimer.elapsed();
