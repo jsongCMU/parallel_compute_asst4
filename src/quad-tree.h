@@ -7,7 +7,7 @@
 const int QuadTreeLeafSize = 128;
 
 // NOTE: Do not remove or edit funcations and variables in this class definition
-class QuadTreeNode {
+template <typename T> class QuadTreeNode {
 public:
   bool isLeaf = 0;
 
@@ -21,9 +21,9 @@ public:
   //  x0, y1 ----------------- x1, y1
   // where x0 < x1 and y0 < y1.
 
-  std::unique_ptr<QuadTreeNode> children[4];
+  std::unique_ptr<QuadTreeNode<T>> children[4];
 
-  std::vector<Particle> particles;
+  std::vector<T> particles;
 };
 
 inline float boxPointDistance(Vec2 bmin, Vec2 bmax, Vec2 p) {
@@ -33,19 +33,19 @@ inline float boxPointDistance(Vec2 bmin, Vec2 bmax, Vec2 p) {
 }
 
 // NOTE: Do not remove or edit funcations and variables in this class definition
-class QuadTree {
+template <typename T> class QuadTree {
 public:
-  std::unique_ptr<QuadTreeNode> root = nullptr;
+  std::unique_ptr<QuadTreeNode<T>> root = nullptr;
   // the bounds of all particles
   Vec2 bmin, bmax;
 
-  void getParticles(std::vector<Particle> &particles, Vec2 position,
+  void getParticles(std::vector<T> &particles, Vec2 position,
                     float radius) const {
     particles.clear();
     getParticlesImpl(particles, root.get(), bmin, bmax, position, radius);
   }
 
-  static void buildQuadTree(const std::vector<Particle> &particles,
+  static void buildQuadTree(const std::vector<T> &particles,
                             QuadTree &tree) {
     // find bounds
     Vec2 bmin(1e30f, 1e30f);
@@ -71,12 +71,12 @@ public:
   }
 
 private:
-  static std::unique_ptr<QuadTreeNode>
-  buildQuadTreeImpl(const std::vector<Particle> &particles, Vec2 bmin,
+  static std::unique_ptr<QuadTreeNode<T>>
+  buildQuadTreeImpl(const std::vector<T> &particles, Vec2 bmin,
                     Vec2 bmax, int N, int* idx) {
     // TODO: paste your sequential implementation in Assignment 3 here.
     // (or you may also rewrite a new version)
-    std::unique_ptr<QuadTreeNode> curNode(new QuadTreeNode);
+    std::unique_ptr<QuadTreeNode<T>> curNode(new QuadTreeNode<T>);
     int topLeftCount = 0;
     int topRightCount = 0;
     int botLeftCount = 0;
@@ -108,7 +108,7 @@ private:
       for (int i = 0; i < N; i++)
       {
         int particleIdx = idx[i];
-        const Particle &p = particles[particleIdx];
+        const T &p = particles[particleIdx];
         bool isLeft = p.position.x < pivot.x;
         bool isUp = p.position.y < pivot.y;
 
@@ -135,8 +135,8 @@ private:
     }
   }
 
-  static void getParticlesImpl(std::vector<Particle> &particles,
-                               QuadTreeNode *node, Vec2 bmin, Vec2 bmax,
+  static void getParticlesImpl(std::vector<T> &particles,
+                               QuadTreeNode<T> *node, Vec2 bmin, Vec2 bmax,
                                Vec2 position, float radius) {
     if (node->isLeaf) {
       for (auto &p : node->particles)

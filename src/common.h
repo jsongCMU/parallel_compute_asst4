@@ -102,6 +102,18 @@ struct Particle {
   Vec2 velocity;
 };
 
+struct MasslessParticle {
+  int id;
+  Vec2 position;
+  Vec2 velocity;
+  static float *massArray;
+  static float getMass(const MasslessParticle &arg) 
+  {
+    return massArray[arg.id];
+  }
+};
+float *MasslessParticle::massArray = nullptr;
+
 // Do not modify this function.
 inline Vec2 computeForce(const Particle &target, const Particle &attractor,
                          float cullRadius) {
@@ -123,10 +135,38 @@ inline Vec2 computeForce(const Particle &target, const Particle &attractor,
   return force;
 }
 
+inline Vec2 computeForce(const MasslessParticle &target, const MasslessParticle &attractor,
+                         float cullRadius) {
+  auto dir = (attractor.position - target.position);
+  auto dist = dir.length();
+  if (dist < 1e-3f)
+    return Vec2(0.0f, 0.0f);
+  dir *= (1.0f / dist);
+  if (dist > cullRadius)
+    return Vec2(0.0f, 0.0f);
+  if (dist < 1e-1f)
+    dist = 1e-1f;
+  const float G = 0.01f;
+  Vec2 force = dir * MasslessParticle::getMass(target) * MasslessParticle::getMass(attractor) * (G / (dist * dist));
+  if (dist > cullRadius * 0.75f) {
+    float decay = 1.0f - (dist - cullRadius * 0.75f) / (cullRadius * 0.25f);
+    force *= decay;
+  }
+  return force;
+}
+
 inline Particle updateParticle(const Particle &pi, Vec2 force,
                                float deltaTime) {
   Particle result = pi;
   result.velocity += force * (deltaTime / pi.mass);
+  result.position += result.velocity * deltaTime;
+  return result;
+}
+
+inline MasslessParticle updateParticle(const MasslessParticle &pi, Vec2 force,
+                               float deltaTime) {
+  MasslessParticle result = pi;
+  result.velocity += force * (deltaTime / MasslessParticle::getMass(pi));
   result.position += result.velocity * deltaTime;
   return result;
 }
