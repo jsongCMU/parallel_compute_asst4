@@ -3,13 +3,15 @@
 #include "quad-tree.h"
 #include "timing.h"
 
-void simulateStep(const QuadTree &quadTree,
-                  std::vector<Particle> &particles, 
-                  StepParameters params) {
+inline void simulateStep(const QuadTree &quadTree,
+                  std::vector<Particle> &particles,
+                  const StepParameters& params) {
   // Update particles for this thread
+  std::vector<Particle> result = particles;
+
   for (int i = 0; i < particles.size(); i++)
   {
-    Particle &curParticle = particles[i];
+    Particle& curParticle = result[i];
 
     Vec2 force = Vec2(0.0f, 0.0f);
     std::vector<Particle> nearbyParticles;
@@ -18,6 +20,8 @@ void simulateStep(const QuadTree &quadTree,
       force += computeForce(curParticle, nearbyP, params.cullRadius);
     curParticle = updateParticle(curParticle, force, params.deltaTime);
   }
+
+  particles.swap(result);
 }
 
 int main(int argc, char *argv[]) {
@@ -81,8 +85,10 @@ int main(int argc, char *argv[]) {
     // Build quadtree of all particles
     QuadTree tree;
     QuadTree::buildQuadTree(particles, tree);
+
     // Update subset of particles
     simulateStep(tree, newParticles, stepParams);
+    
     // Share and get updates
     MPI_Allgatherv(
       &newParticles[0], particleCounts[pid], particleType, // Send

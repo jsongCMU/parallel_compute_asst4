@@ -9,7 +9,7 @@ endif
 ifeq (debug,$(CONFIGURATION))
 CFLAGS += -g
 else
-CFLAGS += -O2
+CFLAGS += -O3
 endif
 
 HEADERS := src/*.h
