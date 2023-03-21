@@ -138,7 +138,7 @@ int main(int argc, char *argv[]) {
   offsets[0] = 0;
   oldtypes[0] = MPI_INT;
   blockcounts[0] = 1;
-  // 5 floats
+  // 4 floats
   MPI_Type_get_extent(MPI_INT, &lowerbound, &extent);
   offsets[1] = 1 * extent;
   oldtypes[1] = MPI_FLOAT;

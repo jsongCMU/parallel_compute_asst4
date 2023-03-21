@@ -2,6 +2,8 @@
 #include "mpi.h"
 #include "quad-tree.h"
 #include "timing.h"
+#include <algorithm>
+#include <random>
 
 inline void simulateStep(const QuadTree<MasslessParticle> &quadTree,
                   std::vector<MasslessParticle> &particles,
@@ -56,6 +58,12 @@ int main(int argc, char *argv[]) {
   }
   MasslessParticle::massArray = massArray.data();
 
+  if (options.loadBalance)
+  {
+    auto rng = std::default_random_engine {};
+    std::shuffle(std::begin(allParticles), std::end(allParticles), rng);
+  }
+
   StepParameters stepParams = getBenchmarkStepParams(options.spaceSize);
 
   // Create struct for Particle (https://hpc-tutorials.llnl.gov/mpi/derived_data_types/struct_examples/)
@@ -67,7 +75,7 @@ int main(int argc, char *argv[]) {
   offsets[0] = 0;
   oldtypes[0] = MPI_INT;
   blockcounts[0] = 1;
-  // 5 floats
+  // 4 floats
   MPI_Type_get_extent(MPI_INT, &lowerbound, &extent);
   offsets[1] = 1 * extent;
   oldtypes[1] = MPI_FLOAT;
@@ -119,6 +127,9 @@ int main(int argc, char *argv[]) {
 
   if (pid == 0) {
     printf("total simulation time: %.6fs\n", totalSimulationTime);
+
+    // particles is jumbled, so sort by id to fix
+    std::sort(allParticles.begin(), allParticles.end(), [](const MasslessParticle& a, const MasslessParticle& b) {return a.id < b.id;});
     // Convert to particles with mass
     allParticlesMass.clear();
     for(int i=0; i<allParticles.size(); i++)
