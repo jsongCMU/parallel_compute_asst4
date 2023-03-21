@@ -31,7 +31,8 @@ clean:
 	rm -rf ./nbody-$(CONFIGURATION)*
 
 FILES = src/*.cpp \
-		src/*.h
+		src/*.h \
+		Makefile
 
 handin.tar: $(FILES)
 	tar cvf handin.tar $(FILES)
