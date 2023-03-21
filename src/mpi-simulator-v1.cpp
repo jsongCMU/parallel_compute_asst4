@@ -2,6 +2,8 @@
 #include "mpi.h"
 #include "quad-tree.h"
 #include "timing.h"
+#include <algorithm>
+#include <random>
 
 inline void simulateStep(const QuadTree &quadTree,
                   std::vector<Particle> &particles,
@@ -39,6 +41,10 @@ int main(int argc, char *argv[]) {
 
   std::vector<Particle> particles, newParticles;
   loadFromFile(options.inputFile, particles);
+
+  if (options.loadBalance)
+    auto rng = std::default_random_engine {};
+    std::shuffle(std::begin(particles), std::end(particles), rng);
 
   StepParameters stepParams = getBenchmarkStepParams(options.spaceSize);
 
@@ -100,6 +106,9 @@ int main(int argc, char *argv[]) {
 
   if (pid == 0) {
     printf("total simulation time: %.6fs\n", totalSimulationTime);
+
+    // particles is jumbled, so sort by id to fix
+    std::sort(particles.begin(), particles.end(), [](const Particle& a, const Particle& b) {return a.id < b.id;});
     saveToFile(options.outputFile, particles);
   }
 
