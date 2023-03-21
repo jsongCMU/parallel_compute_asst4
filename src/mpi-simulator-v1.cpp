@@ -43,8 +43,10 @@ int main(int argc, char *argv[]) {
   loadFromFile(options.inputFile, particles);
 
   if (options.loadBalance)
+  {
     auto rng = std::default_random_engine {};
     std::shuffle(std::begin(particles), std::end(particles), rng);
+  }
 
   StepParameters stepParams = getBenchmarkStepParams(options.spaceSize);
 
